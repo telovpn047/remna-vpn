@@ -230,12 +230,71 @@ final class Ng {
     }
 
     /* ---- servis ---- */
+    static String lastErr = "";
+
+    /** Servisi başlat: v2rayNG sürümüne göre start* metotlarını dener. */
     static boolean start(Context c) {
-        try { call(SERVICE, new String[]{"startVServiceFromToggle", "startVService", "startV2Ray"}, c); return true; } catch (Exception e) { return false; }
+        Class<?> k = cls(SERVICE);
+        if (k == null) { lastErr = "V2RayServiceManager yok"; return false; }
+        Object in = inst(k);
+        StringBuilder err = new StringBuilder();
+        for (String name : new String[]{"startVServiceFromToggle", "startVService", "startV2Ray"}) {
+            for (Method m : k.getDeclaredMethods()) {
+                if (!m.getName().equals(name)) continue;
+                Class<?>[] p = m.getParameterTypes();
+                if (p.length == 0 || !p[0].isAssignableFrom(c.getClass())) continue;
+                Object[] a = new Object[p.length];
+                a[0] = c;
+                for (int i = 1; i < p.length; i++) a[i] = def(p[i]);
+                try {
+                    m.setAccessible(true);
+                    Object r = m.invoke(Modifier.isStatic(m.getModifiers()) ? null : in, a);
+                    if (r instanceof Boolean && !((Boolean) r)) { err.append(name).append("=false; "); continue; }
+                    lastErr = "OK: " + name + "(" + p.length + ")";
+                    return true;
+                } catch (Throwable t) {
+                    Throwable x = t.getCause() != null ? t.getCause() : t;
+                    err.append(name).append(": ").append(x.getClass().getSimpleName()).append(" ").append(x.getMessage()).append("; ");
+                }
+            }
+        }
+        lastErr = err.length() == 0 ? "start metodu bulunamadı" : err.toString();
+        return false;
+    }
+
+    static Object def(Class<?> t) {
+        if (t == boolean.class) return false;
+        if (t == int.class) return 0;
+        if (t == long.class) return 0L;
+        if (t == float.class) return 0f;
+        if (t == double.class) return 0d;
+        return null;
+    }
+
+    /** v2rayNG'nin kısayol aktivitesiyle aç/kapat (yedek yol). */
+    static boolean toggleViaShortcut(Context c) {
+        try {
+            android.content.Intent i = new android.content.Intent();
+            i.setClassName(c.getPackageName(), "com.v2ray.ang.ui.ScSwitchActivity");
+            i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            c.startActivity(i);
+            return true;
+        } catch (Throwable t) {
+            lastErr += " | kısayol: " + t.getMessage();
+            return false;
+        }
     }
 
     static void stop(Context c) {
-        try { call(SERVICE, new String[]{"stopVService", "stopV2Ray"}, c); } catch (Exception ignored) {}
+        try { call(SERVICE, new String[]{"stopVService", "stopV2Ray", "stopService"}, c); } catch (Exception ignored) {}
+    }
+
+    static String methods(String[] classes) {
+        Class<?> k = cls(classes);
+        if (k == null) return "-";
+        java.util.TreeSet<String> n = new java.util.TreeSet<>();
+        for (Method m : k.getDeclaredMethods()) if (!m.getName().contains("$")) n.add(m.getName() + "/" + m.getParameterTypes().length);
+        return n.toString();
     }
 
     static int socksPort() {

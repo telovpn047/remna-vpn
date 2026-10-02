@@ -13,6 +13,9 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.net.VpnService;
 import android.os.Build;
@@ -104,7 +107,7 @@ public class RemnaActivity extends Activity {
             ui.removeCallbacks(this);
             if (!busy) {
                 new Thread(() -> {
-                    boolean up = portOpen();
+                    boolean up = isUp();
                     ui.post(() -> { if (!busy && (up ? ON : OFF) != state) setState(up ? ON : OFF, null); });
                 }).start();
             }
@@ -568,8 +571,7 @@ public class RemnaActivity extends Activity {
             busy = true;
             setState(CONNECTING, "Kesiliyor…");
             new Thread(() -> {
-                Ng.stop(this);
-                waitPort(false, 4000);
+                stopService();
                 busy = false;
                 ui.post(() -> setState(OFF, null));
             }).start();
@@ -604,7 +606,7 @@ public class RemnaActivity extends Activity {
         new Thread(() -> {
             boolean ok = auto() ? connectAuto() : connectManual();
             busy = false;
-            boolean up = ok || portOpen();
+            boolean up = ok || isUp();
             ui.post(() -> { setState(up ? ON : OFF, null); refreshAll(); });
         }).start();
     }
@@ -612,7 +614,7 @@ public class RemnaActivity extends Activity {
     boolean connectManual() {
         String sel = Ng.selected();
         if (sel == null) { List<String> l = Ng.serverList(); if (l.isEmpty()) return false; sel = l.get(0); Ng.select(sel); }
-        if (!restart()) { toast("Bağlanılamadı"); return false; }
+        if (!restart()) { toast("Bağlanılamadı: " + Ng.lastErr); return false; }
         int ms = verify();
         pings.put(sel, ms);
         if (ms < 0) toast("Bağlandı ama internet çalışmıyor — başka sunucu dene");
@@ -644,20 +646,56 @@ public class RemnaActivity extends Activity {
         // hiçbiri doğrulanamadı: en iyi tcp sonucuyla bağlı kal
         Ng.select(ranked.get(0));
         restart();
-        toast("Hiçbir sunucu doğrulanamadı");
-        return portOpen();
+        toast(isUp() ? "Bağlandı, internet testi başarısız" : "Bağlanılamadı: " + Ng.lastErr);
+        return isUp();
     }
 
-    /** Servisi (yeniden) başlatır ve yerel SOCKS portunun açılmasını bekler. */
+    /** Servisi (yeniden) başlatır ve bağlantının kalkmasını bekler. */
     boolean restart() {
-        if (portOpen()) { Ng.stop(this); waitPort(false, 4000); }
+        if (isUp()) { stopService(); }
         CountDownLatch l = new CountDownLatch(1);
         final boolean[] ok = {false};
         ui.post(() -> { ok[0] = Ng.start(this); l.countDown(); });
         try { l.await(5, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
-        if (!ok[0]) return false;
-        return waitPort(true, 10000);
+        if (ok[0] && waitUp(true, 10000)) return true;
+        // yedek: v2rayNG kısayol aktivitesi (aç/kapat)
+        if (!isUp()) {
+            ui.post(() -> Ng.toggleViaShortcut(this));
+            if (waitUp(true, 10000)) { Ng.lastErr += " | kısayol ile açıldı"; return true; }
+        }
+        return false;
     }
+
+    void stopService() {
+        Ng.stop(this);
+        if (!waitUp(false, 4000)) {
+            ui.post(() -> Ng.toggleViaShortcut(this));
+            waitUp(false, 4000);
+        }
+    }
+
+    boolean waitUp(boolean up, long ms) {
+        long end = System.currentTimeMillis() + ms;
+        while (System.currentTimeMillis() < end) {
+            if (isUp() == up) return true;
+            if (cancel && up) return false;
+            try { Thread.sleep(300); } catch (InterruptedException ignored) {}
+        }
+        return false;
+    }
+
+    Network vpnNetwork() {
+        try {
+            ConnectivityManager cm = getSystemService(ConnectivityManager.class);
+            for (Network n : cm.getAllNetworks()) {
+                NetworkCapabilities nc = cm.getNetworkCapabilities(n);
+                if (nc != null && nc.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return n;
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    boolean isUp() { return portOpen() || vpnNetwork() != null; }
 
     boolean waitPort(boolean open, long ms) {
         long end = System.currentTimeMillis() + ms;
@@ -678,26 +716,28 @@ public class RemnaActivity extends Activity {
         }
     }
 
-    /** Proxy üzerinden gerçek gecikme (ms), başarısızsa -1. */
+    /** Tünel üzerinden gerçek gecikme (ms), başarısızsa -1. */
     int verify() {
         String[] urls = {"https://www.gstatic.com/generate_204", "http://cp.cloudflare.com/generate_204"};
-        for (int attempt = 0; attempt < 1; attempt++) {
-            for (String u : urls) {
-                if (cancel) return -1;
-                HttpURLConnection c = null;
-                try {
-                    Proxy p = new Proxy(Proxy.Type.SOCKS, new InetSocketAddress("127.0.0.1", Ng.socksPort()));
-                    long t = System.currentTimeMillis();
-                    c = (HttpURLConnection) new URL(u).openConnection(p);
-                    c.setConnectTimeout(5000);
-                    c.setReadTimeout(5000);
-                    c.setUseCaches(false);
-                    int code = c.getResponseCode();
-                    if (code == 204 || code == 200) return (int) Math.max(1, System.currentTimeMillis() - t);
-                } catch (Exception ignored) {
-                } finally {
-                    if (c != null) c.disconnect();
-                }
+        boolean socks = portOpen();
+        Network vpn = socks ? null : vpnNetwork();
+        for (String u : urls) {
+            if (cancel) return -1;
+            HttpURLConnection c = null;
+            try {
+                long t = System.currentTimeMillis();
+                URL url = new URL(u);
+                if (socks) c = (HttpURLConnection) url.openConnection(new Proxy(Proxy.Type.SOCKS, new InetSocketAddress("127.0.0.1", Ng.socksPort())));
+                else if (vpn != null) c = (HttpURLConnection) vpn.openConnection(url);
+                else c = (HttpURLConnection) url.openConnection();
+                c.setConnectTimeout(6000);
+                c.setReadTimeout(6000);
+                c.setUseCaches(false);
+                int code = c.getResponseCode();
+                if (code == 204 || code == 200) return (int) Math.max(1, System.currentTimeMillis() - t);
+            } catch (Exception ignored) {
+            } finally {
+                if (c != null) c.disconnect();
             }
         }
         return -1;
@@ -808,6 +848,9 @@ public class RemnaActivity extends Activity {
         b.append("Abonelik: ").append(Ng.subscriptions().size()).append("\n");
         b.append("Seçili: ").append(Ng.selected()).append("\n");
         b.append("SOCKS port: ").append(Ng.socksPort()).append(portOpen() ? " (açık)" : " (kapalı)").append("\n");
+        b.append("VPN ağı: ").append(vpnNetwork() != null ? "var" : "yok").append("\n");
+        b.append("Son hata: ").append(Ng.lastErr).append("\n");
+        b.append("Servis metotları: ").append(Ng.methods(Ng.SERVICE)).append("\n");
         for (String[] cls : new String[][]{Ng.MMKV, Ng.SERVICE, Ng.CONFIG, Ng.SETTINGS}) {
             String found = "YOK";
             for (String c : cls) { try { Class.forName(c); found = c; break; } catch (Exception ignored) {} }
