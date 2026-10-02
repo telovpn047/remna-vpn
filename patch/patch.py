@@ -84,6 +84,33 @@ if hits_ok:
 dst = os.path.join(main, "java", "com", "v2ray", "ang", "remna"); os.makedirs(dst, exist_ok=True)
 write(os.path.join(dst, "RemnaHwid.java"), java)
 print(f"[hwid] HttpURLConnection: {hits_conn}, OkHttp: {hits_ok}")
+
+# 5) Yeni ana ekran (RemnaActivity) + launcher
+for f in glob.glob(os.path.join(HERE, "ui", "*.java")):
+    shutil.copy(f, os.path.join(dst, os.path.basename(f)))
+mp = os.path.join(main, "AndroidManifest.xml")
+m = read(mp)
+m, k = re.subn(r'\s*<category\s+android:name="android\.intent\.category\.LAUNCHER"\s*/>', "", m)
+act = """
+        <activity
+            android:name="com.v2ray.ang.remna.RemnaActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.Material.NoActionBar"
+            android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>"""
+m = m.replace("</application>", act, 1)
+write(mp, m)
+pg = os.path.join(app, "proguard-rules.pro")
+with open(pg, "a", encoding="utf-8") as fh:
+    fh.write("\n# Remna VPN: yansıma ile erişilen sınıflar\n-keep class com.v2ray.ang.remna.** { *; }\n-keep class com.v2ray.ang.handler.** { *; }\n-keep class com.v2ray.ang.service.** { *; }\n-keep class com.v2ray.ang.util.** { *; }\n-keep class com.v2ray.ang.dto.** { *; }\n")
+print(f"[ui] RemnaActivity eklendi, eski launcher kaldırıldı: {k}")
+if k == 0: print("! uyarı: eski LAUNCHER bulunamadı")
 if hits_conn + hits_ok == 0:
     os.system(f'grep -rn "User-" {" ".join(src_roots)} | head -20')
     sys.exit("✗ User-Agent ayarlanan yer bulunamadı, HWID eklenemedi")
