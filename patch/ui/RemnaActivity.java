@@ -1,9 +1,9 @@
 package com.v2ray.ang.remna;
 
-import android.animation.ObjectAnimator;
-import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
+import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
@@ -11,6 +11,7 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.net.VpnService;
@@ -20,13 +21,14 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
 import android.text.TextUtils;
-import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -47,14 +49,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-/** Remna VPN ana ekranı: üstte Otomatik, ortada büyük bağlan düğmesi, altta sunucu listesi. */
+/** Remna VPN ana ekranı: üstte Otomatik seçim, ortada güç düğmesi, altta sunucu listesi. */
 public class RemnaActivity extends Activity {
     static final int OFF = 0, CONNECTING = 1, ON = 2;
     static final int REQ_VPN = 41, REQ_NOTIF = 42;
 
-    static final int BG1 = 0xFF0B1020, BG2 = 0xFF1A1240, CARD = 0x1AFFFFFF, CARD_SEL = 0x3322D3EE;
-    static final int ACC1 = 0xFF22D3EE, ACC2 = 0xFF8B5CF6, GREEN = 0xFF22C55E, AMBER = 0xFFF59E0B, RED = 0xFFEF4444;
-    static final int TX = 0xFFFFFFFF, TX2 = 0xB3FFFFFF, TX3 = 0x80FFFFFF;
+    static final int BG1 = 0xFF070B16, BG2 = 0xFF0F1630, PANEL = 0xFF111830, CARD = 0x0FFFFFFF, LINE = 0x14FFFFFF;
+    static final int ACC = 0xFF22D3EE, ACC2 = 0xFF8B5CF6, GREEN = 0xFF10B981, AMBER = 0xFFF59E0B, RED = 0xFFEF4444;
+    static final int TX = 0xFFF1F5F9, TX2 = 0xFF94A3B8, TX3 = 0xFF64748B;
 
     final Handler ui = new Handler(Looper.getMainLooper());
     SharedPreferences prefs;
@@ -63,11 +65,10 @@ public class RemnaActivity extends Activity {
     final Map<String, Integer> pings = new HashMap<>();
     String status = "";
 
-    FrameLayout btnWrap;
-    View ring;
-    TextView btn, stateTv, serverTv, autoCheck;
-    LinearLayout autoCard, list;
-    ObjectAnimator pulse;
+    Ui.PowerButton power;
+    TextView stateTv, serverTv, timerTv, autoSub, countTv;
+    Ui.Switch autoSw;
+    LinearLayout list;
 
     /* ---------------- yaşam döngüsü ---------------- */
     @Override
@@ -76,7 +77,7 @@ public class RemnaActivity extends Activity {
         prefs = getSharedPreferences("remna", MODE_PRIVATE);
         Window w = getWindow();
         w.setStatusBarColor(BG1);
-        w.setNavigationBarColor(BG2);
+        w.setNavigationBarColor(PANEL);
         setContentView(build());
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF);
@@ -85,15 +86,16 @@ public class RemnaActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        renderList();
-        renderAuto();
+        refreshAll();
         poll.run();
+        ui.post(tick);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
         ui.removeCallbacks(poll);
+        ui.removeCallbacks(tick);
     }
 
     final Runnable poll = new Runnable() {
@@ -103,15 +105,34 @@ public class RemnaActivity extends Activity {
             if (!busy) {
                 new Thread(() -> {
                     boolean up = portOpen();
-                    ui.post(() -> { if (!busy) setState(up ? ON : OFF, null); });
+                    ui.post(() -> { if (!busy && (up ? ON : OFF) != state) setState(up ? ON : OFF, null); });
                 }).start();
             }
             ui.postDelayed(this, 2000);
         }
     };
 
-    /* ---------------- arayüz ---------------- */
-    int dp(float v) { return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics()); }
+    final Runnable tick = new Runnable() {
+        @Override
+        public void run() {
+            ui.removeCallbacks(this);
+            long since = prefs.getLong("on_since", 0);
+            if (state == ON && since > 0) {
+                long t = (System.currentTimeMillis() - since) / 1000;
+                timerTv.setText(String.format(java.util.Locale.US, "%02d:%02d:%02d", t / 3600, (t / 60) % 60, t % 60));
+                timerTv.setVisibility(View.VISIBLE);
+            } else timerTv.setVisibility(View.INVISIBLE);
+            ui.postDelayed(this, 1000);
+        }
+    };
+
+    void refreshAll() {
+        renderAuto();
+        renderList();
+    }
+
+    /* ---------------- yardımcılar ---------------- */
+    int dp(float v) { return (int) Ui.dp(this, v); }
 
     GradientDrawable round(int color, float r) {
         GradientDrawable g = new GradientDrawable();
@@ -120,228 +141,420 @@ public class RemnaActivity extends Activity {
         return g;
     }
 
+    GradientDrawable roundStroke(int color, float r, int stroke) {
+        GradientDrawable g = round(color, r);
+        g.setStroke(dp(1), stroke);
+        return g;
+    }
+
     TextView text(String s, float sp, int color, boolean bold) {
         TextView t = new TextView(this);
         t.setText(s);
         t.setTextSize(sp);
         t.setTextColor(color);
-        if (bold) t.setTypeface(Typeface.DEFAULT_BOLD);
+        t.setIncludeFontPadding(false);
+        if (bold) t.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         return t;
     }
 
-    TextView iconBtn(String s, View.OnClickListener l) {
-        TextView t = text(s, 20, TX, false);
-        t.setGravity(Gravity.CENTER);
-        t.setBackground(round(CARD, 14));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(42), dp(42));
-        lp.leftMargin = dp(8);
-        t.setLayoutParams(lp);
-        t.setOnClickListener(l);
-        return t;
+    View iconBtn(int type, float size, View.OnClickListener l) {
+        FrameLayout f = new FrameLayout(this);
+        f.setBackground(roundStroke(CARD, size / 2f, LINE));
+        Ui.Icon ic = new Ui.Icon(this, type, TX);
+        f.addView(ic, new FrameLayout.LayoutParams(dp(size * 0.48f), dp(size * 0.48f), Gravity.CENTER));
+        f.setOnClickListener(l);
+        f.setClickable(true);
+        f.setForeground(getDrawable(android.R.drawable.list_selector_background));
+        return f;
     }
 
+    LinearLayout.LayoutParams lp(int w, int h) { return new LinearLayout.LayoutParams(w, h); }
+
+    static final int MP = ViewGroup.LayoutParams.MATCH_PARENT, WC = ViewGroup.LayoutParams.WRAP_CONTENT;
+
+    /* ---------------- arayüz ---------------- */
     View build() {
+        FrameLayout frame = new FrameLayout(this);
+        frame.setFitsSystemWindows(true);
+        frame.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{BG1, BG2}));
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setFitsSystemWindows(true);
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{BG1, BG2});
-        root.setBackground(bg);
-        root.setPadding(dp(16), dp(10), dp(16), 0);
+        frame.addView(root, new FrameLayout.LayoutParams(MP, MP));
 
-        // üst çubuk
+        // ---- başlık
         LinearLayout top = new LinearLayout(this);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text("Remna VPN", 22, TX, true);
-        top.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        top.setPadding(dp(20), dp(14), dp(20), dp(6));
+        ImageView logo = new ImageView(this);
+        logo.setImageDrawable(getApplicationInfo().loadIcon(getPackageManager()));
+        top.addView(logo, lp(dp(34), dp(34)));
+        TextView title = text("Remna VPN", 19, TX, true);
+        title.setPadding(dp(10), 0, 0, 0);
         title.setOnLongClickListener(v -> { diag(); return true; });
-        top.addView(iconBtn("+", v -> addSubDialog()));
-        top.addView(iconBtn("⟳", v -> updateSubs()));
-        top.addView(iconBtn("⚙", v -> openAdvanced()));
+        top.addView(title, new LinearLayout.LayoutParams(0, WC, 1));
+        View add = iconBtn(Ui.Icon.PLUS, 40, v -> addSubDialog());
+        top.addView(add, lp(dp(40), dp(40)));
+        View gear = iconBtn(Ui.Icon.GEAR, 40, v -> openSettings());
+        LinearLayout.LayoutParams gl = lp(dp(40), dp(40));
+        gl.leftMargin = dp(10);
+        top.addView(gear, gl);
         root.addView(top);
 
-        // otomatik kartı
-        autoCard = new LinearLayout(this);
-        autoCard.setGravity(Gravity.CENTER_VERTICAL);
-        autoCard.setPadding(dp(14), dp(12), dp(14), dp(12));
-        TextView bolt = text("⚡", 22, ACC1, false);
-        autoCard.addView(bolt);
-        LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(12), 0, 0, 0);
-        col.addView(text("Otomatik", 16, TX, true));
-        col.addView(text("En hızlı çalışan sunucuyu kendisi seçer", 12.5f, TX2, false));
-        autoCard.addView(col, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        autoCheck = text("", 18, ACC1, true);
-        autoCard.addView(autoCheck);
-        autoCard.setOnClickListener(v -> {
-            prefs.edit().putBoolean("auto", true).apply();
-            renderAuto();
-            renderList();
-            if (state == ON) reconnect();
+        // ---- otomatik
+        LinearLayout auto = new LinearLayout(this);
+        auto.setGravity(Gravity.CENTER_VERTICAL);
+        auto.setPadding(dp(14), dp(14), dp(16), dp(14));
+        auto.setBackground(roundStroke(CARD, 18, LINE));
+        FrameLayout bolt = new FrameLayout(this);
+        GradientDrawable bb = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0x3322D3EE, 0x338B5CF6});
+        bb.setCornerRadius(dp(12));
+        bolt.setBackground(bb);
+        bolt.addView(new Ui.Icon(this, Ui.Icon.BOLT, ACC), new FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER));
+        auto.addView(bolt, lp(dp(42), dp(42)));
+        LinearLayout ac = new LinearLayout(this);
+        ac.setOrientation(LinearLayout.VERTICAL);
+        ac.setPadding(dp(14), 0, dp(10), 0);
+        ac.addView(text("Otomatik seçim", 15.5f, TX, true));
+        autoSub = text("", 12.5f, TX2, false);
+        autoSub.setPadding(0, dp(4), 0, 0);
+        autoSub.setSingleLine(true);
+        autoSub.setEllipsize(TextUtils.TruncateAt.END);
+        ac.addView(autoSub);
+        auto.addView(ac, new LinearLayout.LayoutParams(0, WC, 1));
+        autoSw = new Ui.Switch(this);
+        auto.addView(autoSw, lp(dp(46), dp(26)));
+        auto.setOnClickListener(v -> {
+            boolean nv = !auto();
+            prefs.edit().putBoolean("auto", nv).apply();
+            autoSw.set(nv, true);
+            refreshAll();
+            if (state == ON && nv) reconnect();
         });
-        LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        alp.topMargin = dp(14);
-        root.addView(autoCard, alp);
+        LinearLayout.LayoutParams al = lp(MP, WC);
+        al.leftMargin = dp(20); al.rightMargin = dp(20); al.topMargin = dp(12);
+        root.addView(auto, al);
 
-        // büyük düğme
+        // ---- güç düğmesi
         LinearLayout center = new LinearLayout(this);
         center.setOrientation(LinearLayout.VERTICAL);
-        center.setGravity(Gravity.CENTER_HORIZONTAL);
-        center.setPadding(0, dp(22), 0, dp(14));
-        btnWrap = new FrameLayout(this);
-        ring = new View(this);
-        btnWrap.addView(ring, new FrameLayout.LayoutParams(dp(196), dp(196), Gravity.CENTER));
-        btn = text("⏻", 58, TX, false);
-        btn.setGravity(Gravity.CENTER);
-        btn.setElevation(dp(8));
-        btnWrap.addView(btn, new FrameLayout.LayoutParams(dp(158), dp(158), Gravity.CENTER));
-        btn.setOnClickListener(v -> toggle());
-        center.addView(btnWrap, new LinearLayout.LayoutParams(dp(210), dp(210)));
-        stateTv = text("", 20, TX, true);
+        center.setGravity(Gravity.CENTER);
+        power = new Ui.PowerButton(this);
+        power.setOnClickListener(v -> toggle());
+        center.addView(power, lp(dp(250), dp(250)));
+        stateTv = text("", 22, TX, true);
         stateTv.setGravity(Gravity.CENTER);
-        stateTv.setPadding(0, dp(10), 0, 0);
         center.addView(stateTv);
         serverTv = text("", 13.5f, TX2, false);
         serverTv.setGravity(Gravity.CENTER);
-        serverTv.setMaxLines(2);
+        serverTv.setPadding(dp(24), dp(8), dp(24), 0);
+        serverTv.setMaxLines(1);
+        serverTv.setEllipsize(TextUtils.TruncateAt.END);
         center.addView(serverTv);
-        root.addView(center);
+        timerTv = text("00:00:00", 13, TX2, false);
+        timerTv.setTypeface(Typeface.MONOSPACE);
+        timerTv.setPadding(dp(12), dp(5), dp(12), dp(5));
+        timerTv.setBackground(round(0x14FFFFFF, 12));
+        LinearLayout.LayoutParams tl = lp(WC, WC);
+        tl.topMargin = dp(10);
+        center.addView(timerTv, tl);
+        root.addView(center, new LinearLayout.LayoutParams(MP, 0, 1.15f));
 
-        // sunucular başlığı
-        LinearLayout lh = new LinearLayout(this);
-        lh.setGravity(Gravity.CENTER_VERTICAL);
-        TextView lt = text("SUNUCULAR", 12.5f, TX3, true);
-        lt.setLetterSpacing(0.08f);
-        lh.addView(lt, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        TextView pingAll = text("Ping test", 13, ACC1, true);
-        pingAll.setPadding(dp(10), dp(6), dp(4), dp(6));
-        pingAll.setOnClickListener(v -> pingAll());
-        lh.addView(pingAll);
-        root.addView(lh);
-
+        // ---- sunucu paneli
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable pb = new GradientDrawable();
+        pb.setColor(PANEL);
+        float r = dp(26);
+        pb.setCornerRadii(new float[]{r, r, r, r, 0, 0, 0, 0});
+        panel.setBackground(pb);
+        panel.setPadding(dp(16), dp(16), dp(16), 0);
+        LinearLayout ph = new LinearLayout(this);
+        ph.setGravity(Gravity.CENTER_VERTICAL);
+        ph.setPadding(dp(4), 0, 0, dp(6));
+        ph.addView(text("Sunucular", 16, TX, true));
+        countTv = text("0", 12, TX2, true);
+        countTv.setPadding(dp(8), dp(3), dp(8), dp(3));
+        countTv.setBackground(round(0x1AFFFFFF, 10));
+        LinearLayout.LayoutParams cl = lp(WC, WC);
+        cl.leftMargin = dp(8);
+        ph.addView(countTv, cl);
+        ph.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+        ph.addView(iconBtn(Ui.Icon.SIGNAL, 36, v -> pingAll()), lp(dp(36), dp(36)));
+        View rf = iconBtn(Ui.Icon.REFRESH, 36, v -> updateSubs());
+        LinearLayout.LayoutParams rl = lp(dp(36), dp(36));
+        rl.leftMargin = dp(8);
+        ph.addView(rf, rl);
+        panel.addView(ph);
         ScrollView sv = new ScrollView(this);
+        sv.setVerticalScrollBarEnabled(false);
         list = new LinearLayout(this);
         list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(0, dp(4), 0, dp(20));
+        list.setPadding(0, dp(4), 0, dp(16));
         sv.addView(list);
-        root.addView(sv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        panel.addView(sv, new LinearLayout.LayoutParams(MP, 0, 1));
+        root.addView(panel, new LinearLayout.LayoutParams(MP, 0, 1f));
 
+        autoSw.set(auto(), false);
         setState(OFF, null);
-        return root;
+        return frame;
     }
 
     boolean auto() { return prefs.getBoolean("auto", true); }
 
     void renderAuto() {
-        boolean a = auto();
-        GradientDrawable g = round(a ? CARD_SEL : CARD, 18);
-        if (a) g.setStroke(dp(1.5f), ACC1);
-        autoCard.setBackground(g);
-        autoCheck.setText(a ? "✓" : "");
+        autoSw.set(auto(), false);
+        if (auto()) {
+            String last = prefs.getString("last_good", null);
+            autoSub.setText(state == ON && last != null ? "Seçilen: " + Ng.info(last)[0] : "En hızlı çalışan sunucu otomatik seçilir");
+        } else autoSub.setText("Kapalı — listeden sunucu seç");
+    }
+
+    static int hue(String s) {
+        float[] hsv = {Math.abs(s.hashCode() % 360), 0.55f, 0.85f};
+        return Color.HSVToColor(hsv);
+    }
+
+    static String initials(String n) {
+        String t = n.replaceAll("[^\\p{L}\\p{N} ]", " ").trim();
+        if (t.isEmpty()) return "•";
+        String[] p = t.split("\\s+");
+        String r = p[0].substring(0, 1) + (p.length > 1 ? p[1].substring(0, 1) : (p[0].length() > 1 ? p[0].substring(1, 2) : ""));
+        return r.toUpperCase();
     }
 
     void renderList() {
         list.removeAllViews();
         List<String> ids = Ng.serverList();
+        countTv.setText(String.valueOf(ids.size()));
         if (ids.isEmpty()) {
-            TextView e = text("Henüz sunucu yok.\n＋ ile Remnawave abonelik linkini ekle.", 14, TX2, false);
-            e.setGravity(Gravity.CENTER);
-            e.setPadding(dp(16), dp(28), dp(16), dp(28));
-            list.addView(e, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            LinearLayout e = new LinearLayout(this);
+            e.setOrientation(LinearLayout.VERTICAL);
+            e.setGravity(Gravity.CENTER_HORIZONTAL);
+            e.setPadding(dp(16), dp(30), dp(16), dp(30));
+            Ui.Icon ic = new Ui.Icon(this, Ui.Icon.LINK, TX3);
+            e.addView(ic, lp(dp(36), dp(36)));
+            TextView t1 = text("Henüz sunucu yok", 15, TX, true);
+            t1.setPadding(0, dp(12), 0, dp(6));
+            e.addView(t1);
+            TextView t2 = text("Abonelik linkini eklemek için + düğmesine dokun", 13, TX2, false);
+            t2.setGravity(Gravity.CENTER);
+            e.addView(t2);
+            list.addView(e, lp(MP, WC));
             return;
         }
         String sel = Ng.selected();
         boolean a = auto();
+        String active = state == ON ? sel : null;
         for (String id : ids) {
-            Object p = Ng.profile(id);
-            String name = str(Ng.get(p, "remarks"));
-            if (TextUtils.isEmpty(name)) name = str(Ng.get(p, "server"));
-            Object type = Ng.get(p, "configType");
-            String sub = (type == null ? "" : type.toString()) + (TextUtils.isEmpty(str(Ng.get(p, "server"))) ? "" : " · " + str(Ng.get(p, "server")));
+            String[] in = Ng.info(id);
+            String name = in[0].isEmpty() ? in[1] : in[0];
+            StringBuilder meta = new StringBuilder(in[3].isEmpty() ? "" : in[3].toUpperCase());
+            if (!in[4].isEmpty()) meta.append(" · ").append(in[4]);
+            if (!in[5].isEmpty()) meta.append(" · ").append(in[5]);
 
             LinearLayout row = new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(14), dp(11), dp(14), dp(11));
+            row.setPadding(dp(12), dp(11), dp(14), dp(11));
             boolean isSel = !a && id.equals(sel);
-            GradientDrawable g = round(isSel ? CARD_SEL : CARD, 14);
-            if (isSel) g.setStroke(dp(1.5f), ACC1);
-            row.setBackground(g);
+            boolean isAct = id.equals(active);
+            row.setBackground(isSel || isAct ? roundStroke(0x1422D3EE, 16, isAct ? GREEN : ACC) : round(CARD, 16));
+
+            TextView av = text(initials(name), 13, Color.WHITE, true);
+            av.setGravity(Gravity.CENTER);
+            GradientDrawable ab = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{hue(name), hue(name + "x")});
+            ab.setShape(GradientDrawable.OVAL);
+            av.setBackground(ab);
+            row.addView(av, lp(dp(38), dp(38)));
+
             LinearLayout c = new LinearLayout(this);
             c.setOrientation(LinearLayout.VERTICAL);
+            c.setPadding(dp(12), 0, dp(8), 0);
             TextView n = text(name, 15, TX, true);
             n.setSingleLine(true);
             n.setEllipsize(TextUtils.TruncateAt.END);
             c.addView(n);
-            TextView s = text(sub, 12, TX3, false);
+            TextView s = text(meta.toString(), 12, TX3, false);
+            s.setPadding(0, dp(4), 0, 0);
             s.setSingleLine(true);
-            s.setEllipsize(TextUtils.TruncateAt.END);
             c.addView(s);
-            row.addView(c, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            row.addView(c, new LinearLayout.LayoutParams(0, WC, 1));
+
             Integer ms = pings.get(id);
-            TextView pt = text(ms == null ? "" : ms < 0 ? "✕" : ms + " ms", 13, ms == null ? TX3 : ms < 0 ? RED : ms < 300 ? GREEN : ms < 800 ? AMBER : RED, true);
-            pt.setPadding(dp(10), 0, 0, 0);
-            row.addView(pt);
+            if (ms != null) {
+                int col = ms < 0 ? RED : ms < 300 ? GREEN : ms < 800 ? AMBER : RED;
+                TextView pt = text(ms < 0 ? "Yok" : ms + " ms", 12, col, true);
+                pt.setPadding(dp(9), dp(4), dp(9), dp(4));
+                pt.setBackground(round((col & 0x00FFFFFF) | 0x22000000, 10));
+                row.addView(pt);
+            }
             final String gid = id;
             row.setOnClickListener(v -> {
                 prefs.edit().putBoolean("auto", false).apply();
                 Ng.select(gid);
-                renderAuto();
-                renderList();
+                refreshAll();
                 if (state == ON) reconnect();
             });
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.topMargin = dp(8);
-            list.addView(row, lp);
+            LinearLayout.LayoutParams l = lp(MP, WC);
+            l.topMargin = dp(8);
+            list.addView(row, l);
         }
     }
 
     static String str(Object o) { return o == null ? "" : o.toString(); }
 
     void setState(int s, String msg) {
+        int prev = state;
         state = s;
-        int c1, c2;
-        String label;
-        if (s == ON) { c1 = GREEN; c2 = 0xFF0EA5E9; label = "Bağlandı"; }
-        else if (s == CONNECTING) { c1 = AMBER; c2 = 0xFFF97316; label = "Bağlanıyor…"; }
-        else { c1 = ACC1; c2 = ACC2; label = "Bağlı değil"; }
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{c1, c2});
-        g.setShape(GradientDrawable.OVAL);
-        btn.setBackground(g);
-        GradientDrawable r = new GradientDrawable();
-        r.setShape(GradientDrawable.OVAL);
-        r.setColor((c1 & 0x00FFFFFF) | 0x22000000);
-        r.setStroke(dp(2), (c1 & 0x00FFFFFF) | 0x66000000);
-        ring.setBackground(r);
-        stateTv.setText(label);
-        stateTv.setTextColor(s == OFF ? TX : c1);
+        power.setState(s);
+        if (s == ON && prev != ON && prefs.getLong("on_since", 0) == 0) prefs.edit().putLong("on_since", System.currentTimeMillis()).apply();
+        if (s == OFF) prefs.edit().putLong("on_since", 0).apply();
+        stateTv.setText(s == ON ? "Korunuyor" : s == CONNECTING ? "Bağlanıyor…" : "Bağlı değil");
+        stateTv.setTextColor(s == ON ? GREEN : s == CONNECTING ? AMBER : TX);
         if (msg != null) status = msg;
         else if (s == ON) status = currentName();
-        else if (s == OFF) status = auto() ? "Otomatik mod" : currentName();
+        else if (s == OFF) status = auto() ? "Bağlanmak için dokun" : currentName();
         serverTv.setText(status);
-        if (s == CONNECTING) {
-            if (pulse == null) {
-                pulse = ObjectAnimator.ofFloat(ring, View.SCALE_X, 1f, 1.12f);
-                pulse.setDuration(700);
-                pulse.setRepeatCount(ValueAnimator.INFINITE);
-                pulse.setRepeatMode(ValueAnimator.REVERSE);
-                pulse.addUpdateListener(a -> ring.setScaleY(ring.getScaleX()));
-                pulse.start();
-            }
-        } else if (pulse != null) {
-            pulse.cancel();
-            pulse = null;
-            ring.setScaleX(1f);
-            ring.setScaleY(1f);
-        }
+        if (prev != s) { renderAuto(); renderList(); }
     }
 
     String currentName() {
         String sel = Ng.selected();
         if (sel == null) return "";
-        Object p = Ng.profile(sel);
-        String n = str(Ng.get(p, "remarks"));
+        String n = Ng.info(sel)[0];
         Integer ms = pings.get(sel);
         return n + (ms != null && ms > 0 ? "  ·  " + ms + " ms" : "");
+    }
+
+    /* ---------------- ayarlar sayfası ---------------- */
+    void openSettings() {
+        Dialog d = new Dialog(this, android.R.style.Theme_Material_NoActionBar);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackgroundColor(BG1);
+        box.setFitsSystemWindows(true);
+
+        LinearLayout h = new LinearLayout(this);
+        h.setGravity(Gravity.CENTER_VERTICAL);
+        h.setPadding(dp(20), dp(14), dp(20), dp(10));
+        h.addView(text("Ayarlar", 20, TX, true), new LinearLayout.LayoutParams(0, WC, 1));
+        h.addView(iconBtn(Ui.Icon.CLOSE, 40, v -> d.dismiss()), lp(dp(40), dp(40)));
+        box.addView(h);
+
+        ScrollView sv = new ScrollView(this);
+        LinearLayout c = new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setPadding(dp(20), 0, dp(20), dp(30));
+        sv.addView(c);
+        box.addView(sv, new LinearLayout.LayoutParams(MP, 0, 1));
+
+        Runnable[] fill = new Runnable[1];
+        fill[0] = () -> {
+            c.removeAllViews();
+            c.addView(section("ABONELİKLER"));
+            List<Object[]> subs = Ng.subscriptions();
+            if (subs.isEmpty()) c.addView(note("Henüz abonelik yok."));
+            for (Object[] sub : subs) {
+                String id = (String) sub[0];
+                String nm = str(Ng.get(sub[1], "remarks"));
+                String url = str(Ng.get(sub[1], "url"));
+                LinearLayout row = card();
+                LinearLayout col = new LinearLayout(this);
+                col.setOrientation(LinearLayout.VERTICAL);
+                TextView t = text(nm.isEmpty() ? "Abonelik" : nm, 15, TX, true);
+                col.addView(t);
+                TextView u = text(url, 12, TX3, false);
+                u.setSingleLine(true);
+                u.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+                u.setPadding(0, dp(4), 0, 0);
+                col.addView(u);
+                row.addView(col, new LinearLayout.LayoutParams(0, WC, 1));
+                View del = iconBtn(Ui.Icon.TRASH, 36, v -> new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        .setMessage("\"" + (nm.isEmpty() ? url : nm) + "\" ve sunucuları silinsin mi?")
+                        .setPositiveButton("Sil", (x, y) -> { if (!Ng.removeSubscription(id)) toast("Silinemedi"); fill[0].run(); refreshAll(); })
+                        .setNegativeButton("Vazgeç", null).show());
+                row.addView(del, lp(dp(36), dp(36)));
+                c.addView(row, cardLp());
+            }
+            c.addView(action(Ui.Icon.PLUS, "Abonelik ekle", v -> addSubDialog(() -> fill[0].run())), cardLp());
+            c.addView(action(Ui.Icon.REFRESH, "Tümünü güncelle", v -> updateSubs()), cardLp());
+
+            c.addView(section("BAĞLANTI"));
+            c.addView(action(Ui.Icon.SHIELD, "Uygulama bazlı VPN", v -> openClass("com.v2ray.ang.ui.PerAppProxyActivity")), cardLp());
+            c.addView(action(Ui.Icon.LINK, "Yönlendirme kuralları", v -> openClass("com.v2ray.ang.ui.RoutingSettingActivity")), cardLp());
+            c.addView(action(Ui.Icon.GEAR, "Gelişmiş ayarlar", v -> openClass("com.v2ray.ang.ui.SettingsActivity")), cardLp());
+
+            c.addView(section("CİHAZ"));
+            LinearLayout hw = card();
+            LinearLayout hc = new LinearLayout(this);
+            hc.setOrientation(LinearLayout.VERTICAL);
+            hc.addView(text("Cihaz kimliği (HWID)", 14, TX, true));
+            TextView hv = text(RemnaHwid.id(), 12.5f, TX2, false);
+            hv.setTypeface(Typeface.MONOSPACE);
+            hv.setPadding(0, dp(4), 0, 0);
+            hc.addView(hv);
+            hw.addView(hc, new LinearLayout.LayoutParams(0, WC, 1));
+            hw.setOnClickListener(v -> {
+                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("hwid", RemnaHwid.id()));
+                toast("Kopyalandı");
+            });
+            c.addView(hw, cardLp());
+            String ver = "";
+            try { ver = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception ignored) {}
+            TextView foot = text("Remna VPN " + ver + " · Xray çekirdeği", 12, TX3, false);
+            foot.setGravity(Gravity.CENTER);
+            foot.setPadding(0, dp(24), 0, 0);
+            c.addView(foot, lp(MP, WC));
+        };
+        fill[0].run();
+        d.setContentView(box);
+        Window w = d.getWindow();
+        if (w != null) {
+            w.setStatusBarColor(BG1);
+            w.setNavigationBarColor(BG1);
+            w.setWindowAnimations(android.R.style.Animation_Dialog);
+        }
+        d.setOnDismissListener(x -> refreshAll());
+        d.show();
+    }
+
+    TextView section(String s) {
+        TextView t = text(s, 12, TX3, true);
+        t.setLetterSpacing(0.08f);
+        t.setPadding(dp(4), dp(22), 0, dp(4));
+        return t;
+    }
+
+    TextView note(String s) {
+        TextView t = text(s, 13, TX2, false);
+        t.setPadding(dp(4), dp(8), 0, dp(4));
+        return t;
+    }
+
+    LinearLayout card() {
+        LinearLayout r = new LinearLayout(this);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(dp(16), dp(14), dp(12), dp(14));
+        r.setBackground(roundStroke(CARD, 16, LINE));
+        return r;
+    }
+
+    LinearLayout.LayoutParams cardLp() {
+        LinearLayout.LayoutParams l = lp(MP, WC);
+        l.topMargin = dp(8);
+        return l;
+    }
+
+    View action(int icon, String label, View.OnClickListener l) {
+        LinearLayout r = card();
+        r.addView(new Ui.Icon(this, icon, ACC), lp(dp(22), dp(22)));
+        TextView t = text(label, 15, TX, false);
+        t.setPadding(dp(14), 0, 0, 0);
+        r.addView(t, new LinearLayout.LayoutParams(0, WC, 1));
+        r.addView(new Ui.Icon(this, Ui.Icon.CHEVRON, TX3), lp(dp(18), dp(18)));
+        r.setOnClickListener(l);
+        return r;
     }
 
     void toast(String s) { ui.post(() -> Toast.makeText(this, s, Toast.LENGTH_SHORT).show()); }
@@ -391,7 +604,8 @@ public class RemnaActivity extends Activity {
         new Thread(() -> {
             boolean ok = auto() ? connectAuto() : connectManual();
             busy = false;
-            ui.post(() -> { renderList(); setState(ok ? ON : (portOpen() ? ON : OFF), null); });
+            boolean up = ok || portOpen();
+            ui.post(() -> { setState(up ? ON : OFF, null); refreshAll(); });
         }).start();
     }
 
@@ -416,7 +630,7 @@ public class RemnaActivity extends Activity {
             Integer tcp = pings.get(id);
             if (tcp != null && tcp < 0 && tries > 1) continue;
             Ng.select(id);
-            status("Deneniyor: " + str(Ng.get(Ng.profile(id), "remarks")));
+            status("Deneniyor: " + Ng.info(id)[0]);
             if (!restart()) continue;
             int ms = verify();
             if (ms > 0) {
@@ -491,10 +705,10 @@ public class RemnaActivity extends Activity {
 
     /* ---------------- ping ---------------- */
     int tcping(String id) {
-        Object p = Ng.profile(id);
-        String host = str(Ng.get(p, "server"));
+        String[] in = Ng.info(id);
+        String host = in[1];
         int port;
-        try { port = Integer.parseInt(str(Ng.get(p, "serverPort")).trim()); } catch (Exception e) { return -2; }
+        try { port = Integer.parseInt(in[2].trim()); } catch (Exception e) { return -2; }
         if (host.isEmpty()) return -2;
         long t = System.currentTimeMillis();
         try (Socket s = new Socket()) {
@@ -528,7 +742,9 @@ public class RemnaActivity extends Activity {
     }
 
     /* ---------------- abonelik ---------------- */
-    void addSubDialog() {
+    void addSubDialog() { addSubDialog(null); }
+
+    void addSubDialog(Runnable after) {
         EditText in = new EditText(this);
         in.setHint("https://panel.example.com/api/sub/…");
         in.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
@@ -543,23 +759,24 @@ public class RemnaActivity extends Activity {
         FrameLayout f = new FrameLayout(this);
         f.setPadding(dp(20), dp(8), dp(20), 0);
         f.addView(in);
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
                 .setTitle("Abonelik ekle")
                 .setMessage("Remnawave abonelik linkini yapıştır (sunucu linkleri de olur).")
                 .setView(f)
-                .setPositiveButton("Ekle", (d, w) -> addSub(in.getText().toString().trim()))
+                .setPositiveButton("Ekle", (d, w) -> addSub(in.getText().toString().trim(), after))
                 .setNegativeButton("İptal", null)
                 .show();
     }
 
-    void addSub(String url) {
+    void addSub(String url, Runnable after) {
         if (url.isEmpty()) return;
         toast("Ekleniyor…");
         new Thread(() -> {
             boolean ok = Ng.importText(url);
             if (ok && url.startsWith("http")) Ng.updateAll();
             ui.post(() -> {
-                renderList();
+                refreshAll();
+                if (after != null) after.run();
                 if (!ok) fallbackAddSub(url);
                 else toast(Ng.serverList().isEmpty() ? "Sunucu gelmedi — linki kontrol et" : "Sunucular güncellendi");
             });
@@ -580,7 +797,7 @@ public class RemnaActivity extends Activity {
         toast("Abonelik güncelleniyor…");
         new Thread(() -> {
             boolean ok = Ng.updateAll();
-            ui.post(() -> { renderList(); toast(ok ? "Güncellendi" : "Güncellenemedi"); });
+            ui.post(() -> { refreshAll(); toast(ok ? "Güncellendi" : "Güncellenemedi"); });
         }).start();
     }
 
@@ -588,6 +805,7 @@ public class RemnaActivity extends Activity {
     void diag() {
         StringBuilder b = new StringBuilder();
         b.append("Sunucu sayısı: ").append(Ng.serverList().size()).append("\n");
+        b.append("Abonelik: ").append(Ng.subscriptions().size()).append("\n");
         b.append("Seçili: ").append(Ng.selected()).append("\n");
         b.append("SOCKS port: ").append(Ng.socksPort()).append(portOpen() ? " (açık)" : " (kapalı)").append("\n");
         for (String[] cls : new String[][]{Ng.MMKV, Ng.SERVICE, Ng.CONFIG, Ng.SETTINGS}) {
@@ -595,7 +813,7 @@ public class RemnaActivity extends Activity {
             for (String c : cls) { try { Class.forName(c); found = c; break; } catch (Exception ignored) {} }
             b.append(found).append("\n");
         }
-        new AlertDialog.Builder(this).setTitle("Tanılama").setMessage(b.toString()).setPositiveButton("Tamam", null).show();
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Tanılama").setMessage(b.toString()).setPositiveButton("Tamam", null).show();
     }
 
     void openAdvanced() { openClass("com.v2ray.ang.ui.MainActivity"); }

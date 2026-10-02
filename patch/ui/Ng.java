@@ -66,18 +66,160 @@ final class Ng {
     }
 
     /* ---- sunucular ---- */
+    static Class<?> cls(String[] names) {
+        for (String n : names) { try { return Class.forName(n); } catch (Exception ignored) {} }
+        return null;
+    }
+
+    static Object inst(Class<?> c) {
+        try { return c.getField("INSTANCE").get(null); } catch (Exception e) { return null; }
+    }
+
+    static Object invoke(Class<?> c, Method m, Object... a) throws Exception {
+        return m.invoke(Modifier.isStatic(m.getModifiers()) ? null : inst(c), a);
+    }
+
     @SuppressWarnings("unchecked")
+    static void addAll(java.util.LinkedHashSet<String> out, Object r) {
+        if (r instanceof java.util.Collection) for (Object o : (java.util.Collection<Object>) r) if (o instanceof String) out.add((String) o);
+    }
+
+    /** Tüm sunucu GUID'leri: v2rayNG sürümüne göre farklı yollar denenir. */
     static List<String> serverList() {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        Class<?> c = cls(MMKV);
+        if (c == null) return new ArrayList<>();
+        // 1) parametresiz decode*ServerList()
+        for (Method m : c.getMethods()) {
+            String n = m.getName().toLowerCase();
+            if (m.getParameterTypes().length == 0 && n.startsWith("decode") && n.contains("server") && n.endsWith("list")) {
+                try { addAll(out, invoke(c, m)); } catch (Exception ignored) {}
+            }
+        }
+        // 2) abonelik başına decode*ServerList(subId)
+        for (String sub : subscriptionIds()) {
+            for (Method m : c.getMethods()) {
+                String n = m.getName().toLowerCase();
+                Class<?>[] p = m.getParameterTypes();
+                if (p.length == 1 && p[0] == String.class && n.startsWith("decode") && n.contains("server") && n.endsWith("list")) {
+                    try { addAll(out, invoke(c, m, sub)); } catch (Exception ignored) {}
+                }
+            }
+        }
+        // 3) MMKV deposundaki profil anahtarları
+        if (out.isEmpty()) {
+            for (String id : storeIds(c, "PROFILE", "SERVER_CONFIG")) {
+                Object kv = mmkv(id);
+                try {
+                    String[] keys = (String[]) kv.getClass().getMethod("allKeys").invoke(kv);
+                    if (keys != null) for (String k : keys) out.add(k);
+                } catch (Exception ignored) {}
+            }
+        }
+        List<String> r = new ArrayList<>();
+        for (String g : out) if (profile(g) != null || !json(g).isEmpty()) r.add(g);
+        return r;
+    }
+
+    static List<Object[]> subscriptions() {
+        List<Object[]> out = new ArrayList<>();
+        Class<?> c = cls(MMKV);
+        if (c == null) return out;
+        for (String mn : new String[]{"decodeSubscriptions", "decodeSubsList", "decodeAllSubscriptions"}) {
+            try {
+                Object r = c.getMethod(mn);
+                Object list = invoke(c, (Method) r);
+                if (!(list instanceof java.util.Collection)) continue;
+                for (Object e : (java.util.Collection<?>) list) {
+                    String id = null; Object item = e;
+                    if (e != null && e.getClass().getName().equals("kotlin.Pair")) {
+                        id = String.valueOf(get(e, "first"));
+                        item = get(e, "second");
+                    } else {
+                        for (String f : new String[]{"guid", "subId", "id"}) { Object v = get(e, f); if (v != null) { id = v.toString(); break; } }
+                        Object sub = get(e, "subscription");
+                        if (sub != null) item = sub;
+                    }
+                    if (id != null) out.add(new Object[]{id, item});
+                }
+                if (!out.isEmpty()) return out;
+            } catch (Exception ignored) {}
+        }
+        return out;
+    }
+
+    static List<String> subscriptionIds() {
+        List<String> r = new ArrayList<>();
+        for (Object[] s : subscriptions()) r.add((String) s[0]);
+        return r;
+    }
+
+    static boolean removeSubscription(String id) {
+        boolean ok = false;
+        try { call(MMKV, new String[]{"removeServerViaSubid", "removeServersViaSubid"}, id); } catch (Exception ignored) {}
+        try { call(MMKV, new String[]{"removeSubscription", "removeSubscriptionItem"}, id); ok = true; } catch (Exception ignored) {}
+        return ok;
+    }
+
+    static List<String> storeIds(Class<?> c, String... must) {
+        List<String> ids = new ArrayList<>();
+        for (Field f : c.getDeclaredFields()) {
+            if (f.getType() != String.class || !Modifier.isStatic(f.getModifiers())) continue;
+            try {
+                f.setAccessible(true);
+                String v = (String) f.get(null);
+                if (v == null) continue;
+                String u = v.toUpperCase() + "|" + f.getName().toUpperCase();
+                for (String m : must) if (u.contains(m) && !u.contains("RAW") && !u.contains("AFF") && !ids.contains(v)) ids.add(v);
+            } catch (Exception ignored) {}
+        }
+        return ids;
+    }
+
+    static Object mmkv(String id) {
         try {
-            Object r = call(MMKV, new String[]{"decodeServerList"});
-            if (r instanceof List) return new ArrayList<>((List<String>) r);
-        } catch (Exception ignored) {}
-        return new ArrayList<>();
+            Class<?> k = Class.forName("com.tencent.mmkv.MMKV");
+            return k.getMethod("mmkvWithID", String.class, int.class).invoke(null, id, 2 /* MULTI_PROCESS_MODE */);
+        } catch (Exception e) { return null; }
+    }
+
+    /** Profil JSON'u (yedek yol). */
+    static String json(String guid) {
+        Class<?> c = cls(MMKV);
+        if (c == null) return "";
+        for (String id : storeIds(c, "PROFILE", "SERVER_CONFIG")) {
+            Object kv = mmkv(id);
+            try {
+                Object v = kv.getClass().getMethod("decodeString", String.class).invoke(kv, guid);
+                if (v != null && !v.toString().isEmpty()) return v.toString();
+            } catch (Exception ignored) {}
+        }
+        return "";
     }
 
     static Object profile(String guid) {
-        try { return call(MMKV, new String[]{"decodeServerConfig", "decodeProfileConfig"}, guid); } catch (Exception e) { return null; }
+        try { return call(MMKV, new String[]{"decodeServerConfig", "decodeProfileConfig", "decodeProfileItem"}, guid); } catch (Exception e) { return null; }
     }
+
+    /** Ekranda gösterilecek bilgiler: {ad, sunucu, port, tür, ağ, güvenlik}. */
+    static String[] info(String guid) {
+        Object p = profile(guid);
+        String[] r = new String[6];
+        if (p != null) {
+            r[0] = s(get(p, "remarks")); r[1] = s(get(p, "server")); r[2] = s(get(p, "serverPort"));
+            r[3] = s(get(p, "configType")); r[4] = s(get(p, "network")); r[5] = s(get(p, "security"));
+        } else {
+            try {
+                org.json.JSONObject j = new org.json.JSONObject(json(guid));
+                r[0] = j.optString("remarks"); r[1] = j.optString("server"); r[2] = j.optString("serverPort");
+                r[3] = j.optString("configType"); r[4] = j.optString("network"); r[5] = j.optString("security");
+            } catch (Exception e) { for (int i = 0; i < 6; i++) r[i] = ""; }
+        }
+        for (int i = 0; i < 6; i++) if (r[i] == null || r[i].equals("null")) r[i] = "";
+        return r;
+    }
+
+    static String s(Object o) { return o == null ? "" : o.toString(); }
 
     static String selected() {
         try { Object r = call(MMKV, new String[]{"getSelectServer", "decodeSelectServer"}); return r == null ? null : r.toString(); } catch (Exception e) { return null; }
