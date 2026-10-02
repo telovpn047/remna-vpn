@@ -1,0 +1,105 @@
+name: Remna VPN APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: "v2rayNG sürümü (boş = en son)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: v2rayNG kaynağını indir
+        run: |
+          TAG="${{ github.event.inputs.upstream_tag }}"
+          [ -z "$TAG" ] && TAG=$(gh api repos/2dust/v2rayNG/releases/latest -q .tag_name)
+          echo "UP_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "v2rayNG $TAG"
+          git clone --depth 1 --branch "$TAG" https://github.com/2dust/v2rayNG.git up
+          cd up && git submodule update --init --recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Android SDK / NDK
+        run: |
+          WF=up/.github/workflows/build.yml
+          NDK=$(grep -oE 'ndk;[0-9.]+' "$WF" | head -1 | cut -d';' -f2); NDK=${NDK:-29.0.14206865}
+          PLAT=$(grep -oE 'platforms;android-[0-9.]+' "$WF" | head -1 || true)
+          BT=$(grep -oE 'build-tools;[0-9.]+' "$WF" | head -1 || true)
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" --install "ndk;$NDK" $PLAT $BT > /dev/null
+          echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK" >> "$GITHUB_ENV"
+          G=up/V2rayNG/app/build.gradle.kts
+          grep -q 'ndkVersion' "$G" || sed -i "0,/^android {/s//android {\n    ndkVersion = \"$NDK\"/" "$G"
+          echo "NDK=$NDK PLAT=$PLAT BT=$BT"
+
+      - name: hev-socks5-tunnel derle
+        run: |
+          cd up
+          bash compile-hevtun.sh
+          cp -r libs V2rayNG/app
+
+      - name: libv2ray.aar (Xray çekirdeği)
+        run: |
+          cd up
+          SHA=$(git rev-parse HEAD:AndroidLibXrayLite)
+          T=$(git ls-remote --tags https://github.com/2dust/AndroidLibXrayLite | grep "^$SHA" | head -1 | sed -E 's#.*refs/tags/##; s#\^\{\}##')
+          [ -z "$T" ] && T=$(gh api repos/2dust/AndroidLibXrayLite/releases/latest -q .tag_name)
+          echo "XRAY_TAG=$T" >> "$GITHUB_ENV"
+          mkdir -p V2rayNG/app/libs
+          curl -fL --retry 3 -o V2rayNG/app/libs/libv2ray.aar "https://github.com/2dust/AndroidLibXrayLite/releases/download/$T/libv2ray.aar"
+          ls -la V2rayNG/app/libs
+
+      - name: Remna VPN yaması
+        run: python3 patch/patch.py up
+
+      - name: APK derle
+        run: |
+          cd up/V2rayNG
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace \
+            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/remna.jks" \
+            -Pandroid.injected.signing.store.password=remna123 \
+            -Pandroid.injected.signing.key.alias=remna \
+            -Pandroid.injected.signing.key.password=remna123
+
+      - name: APK'ları topla
+        run: |
+          mkdir -p out
+          A=up/V2rayNG/app/build/outputs/apk
+          find "$A" -name '*.apk'
+          U=$(find "$A" -name '*universal*.apk' | grep -iv fdroid | head -1); [ -z "$U" ] && U=$(find "$A" -name '*universal*.apk' | head -1)
+          ARM=$(find "$A" -name '*arm64-v8a*.apk' | grep -iv fdroid | head -1)
+          cp "$U" out/RemnaVPN.apk
+          [ -n "$ARM" ] && cp "$ARM" out/RemnaVPN-arm64.apk
+          ls -la out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RemnaVPN
+          path: out/*.apk
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Remna VPN ${{ github.run_number }} (v2rayNG ${{ env.UP_TAG }}, Xray ${{ env.XRAY_TAG }})
+          files: out/*.apk
+          make_latest: true
