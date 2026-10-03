@@ -1016,6 +1016,36 @@ public class RemnaActivity extends Activity {
                 .setNegativeButton("Kapat", null).show();
     }
 
+    /** Uygulamanın kendi logcat kayıtları (VPN süreci dahil, aynı UID) — izin gerektirmez. */
+    void copyLog(String head) {
+        toast("Log toplanıyor…");
+        new Thread(() -> {
+            StringBuilder out = new StringBuilder(head).append("\n---- LOG ----\n");
+            try {
+                Process p = Runtime.getRuntime().exec(new String[]{"logcat", "-d", "-v", "time", "-t", "1500"});
+                java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
+                java.util.ArrayDeque<String> keep = new java.util.ArrayDeque<>();
+                String line;
+                java.util.regex.Pattern want = java.util.regex.Pattern.compile("(?i)(v2ray|xray|libv2ray|hev|tun2socks|vpn|ang|remna|AndroidRuntime|FATAL|Exception|error| E/| W/)");
+                while ((line = r.readLine()) != null) {
+                    if (!want.matcher(line).find()) continue;
+                    if (line.contains("chromium") || line.contains("Ads") && !line.contains("Exception")) continue;
+                    keep.add(line);
+                    if (keep.size() > 220) keep.poll();
+                }
+                for (String l : keep) out.append(l).append('\n');
+            } catch (Exception e) {
+                out.append("logcat okunamadı: ").append(e.getMessage());
+            }
+            String txt = out.length() > 60000 ? out.substring(out.length() - 60000) : out.toString();
+            ui.post(() -> {
+                ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("remna-log", txt));
+                toast("Log kopyalandı (" + txt.length() / 1024 + " KB) — sohbete yapıştır");
+            });
+        }).start();
+    }
+
     /** Başlığa uzun basınca: v2rayNG köprüsünün durumunu gösterir. */
     void diag() {
         StringBuilder b = new StringBuilder();
@@ -1036,7 +1066,10 @@ public class RemnaActivity extends Activity {
             for (String c : cls) { try { Class.forName(c); found = c; break; } catch (Exception ignored) {} }
             b.append(found).append("\n");
         }
-        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Tanılama").setMessage(b.toString()).setPositiveButton("Tamam", null).show();
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Tanılama").setMessage(b.toString())
+                .setPositiveButton("Tamam", null)
+                .setNeutralButton("Logu kopyala", (d, w) -> copyLog(b.toString()))
+                .show();
     }
 
     void openAdvanced() { openClass("com.v2ray.ang.ui.MainActivity"); }
