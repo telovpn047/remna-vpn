@@ -112,7 +112,7 @@ print("[cfg] RemnaConfig yazıldı")
 gk = os.path.join(app, "build.gradle.kts")
 g = read(gk)
 if "play-services-ads" not in g:
-    g, k = re.subn(r'(\ndependencies\s*\{)', r'\1\n    implementation("com.google.android.gms:play-services-ads:23.6.0")', g, count=1)
+    g, k = re.subn(r'(\ndependencies\s*\{)', r'\1\n    implementation("com.google.android.gms:play-services-ads:23.6.0")\n    implementation("com.google.guava:guava:33.3.1-android")', g, count=1)
     if k == 0: sys.exit("✗ dependencies bloğu bulunamadı")
     write(gk, g)
 print("[ads] play-services-ads eklendi")
