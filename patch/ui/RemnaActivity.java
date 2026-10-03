@@ -75,6 +75,7 @@ public class RemnaActivity extends Activity {
     LinearLayout list, serverCard;
     Dialog serversDlg;
     volatile String coreInit = "";
+    volatile boolean needAd = false, adBusy = false;
 
     /* ---------------- yaşam döngüsü ---------------- */
     @Override
@@ -135,9 +136,12 @@ public class RemnaActivity extends Activity {
                 timerTv.setText(String.format(java.util.Locale.US, L.t("Kalan süre  %02d:%02d:%02d"), t / 3600, (t / 60) % 60, t % 60));
                 timerTv.setTextColor(left < 5 * 60000 ? AMBER : TX2);
             } else {
-                timerTv.setText(L.t("Süre yok — bağlanmak için video izle"));
+                timerTv.setText(L.t("Bağlanınca kısa bir video izlenir"));
                 timerTv.setTextColor(TX3);
-                if (state == ON && !busy) { toast(L.t("Süre doldu")); toggle(); }
+                if (state == ON && !busy && !adBusy) {
+                    RemnaExpiry.atLeast(RemnaActivity.this, 2 * 60000L);
+                    requireAd(0);
+                }
             }
             boolean full = left > RemnaConfig.MAX_BANK_MS - RemnaConfig.REWARD_MS;
             watchRow.setAlpha(full ? 0.45f : 1f);
@@ -283,7 +287,7 @@ public class RemnaActivity extends Activity {
         GradientDrawable wb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFF0891B2, 0xFF6366F1});
         wb.setCornerRadius(dp(20));
         watchBtn.setBackground(wb);
-        watchBtn.setOnClickListener(v -> watchAd(null));
+        watchBtn.setOnClickListener(v -> { if (state == ON) requireAd(0); else toggle(); });
         watchBtn.setCompoundDrawablePadding(dp(8));
         watchBtn.setPadding(dp(18), dp(10), dp(20), dp(10));
         LinearLayout.LayoutParams wl = lp(WC, WC);
@@ -295,7 +299,7 @@ public class RemnaActivity extends Activity {
         wrow.setPadding(dp(16), 0, dp(4), 0);
         wrow.addView(new Ui.Icon(this, Ui.Icon.PLAY, Color.WHITE), lp(dp(16), dp(16)));
         wrow.addView(watchBtn);
-        wrow.setOnClickListener(v -> watchAd(null));
+        wrow.setOnClickListener(v -> { if (state == ON) requireAd(0); else toggle(); });
         center.addView(wrow, wl);
         watchRow = wrow;
         root.addView(center, new LinearLayout.LayoutParams(MP, 0, 1f));
@@ -725,7 +729,8 @@ public class RemnaActivity extends Activity {
             return;
         }
         if (Ng.serverList().isEmpty()) { toast(L.t("Sunucular yükleniyor…")); ensureSubscription(true); return; }
-        if (RemnaExpiry.remaining(this) < 30000) { watchAd(this::toggle); return; }
+        needAd = true;
+        RemnaExpiry.atLeast(this, 3 * 60000L); // reklam yüklenene kadar bağlantı açık kalsın
         Intent i = VpnService.prepare(this);
         if (i != null) startActivityForResult(i, REQ_VPN);
         else connect();
@@ -755,7 +760,12 @@ public class RemnaActivity extends Activity {
             boolean ok = auto() ? connectAuto() : connectManual();
             busy = false;
             boolean up = ok || isUp();
-            ui.post(() -> { setState(up ? ON : OFF, null); refreshAll(); });
+            if (up) Ads.preload(this);
+            ui.post(() -> {
+                setState(up ? ON : OFF, null);
+                refreshAll();
+                if (up && needAd) { needAd = false; requireAd(0); }
+            });
         }).start();
     }
 
@@ -986,6 +996,38 @@ public class RemnaActivity extends Activity {
         }).start();
     }
 
+    /* ---------------- bağlantı reklamı ---------------- */
+    /**
+     * VPN bağlandıktan sonra (reklam VPN üzerinden yüklenir) ödüllü video gösterir.
+     * Tamamı izlenirse +1 saat; yarıda kapatılırsa VPN kapatılır; hiç yüklenemezse kısa süre verilip sonra tekrar denenir.
+     */
+    void requireAd(int attempt) {
+        if (adBusy || isFinishing()) return;
+        adBusy = true;
+        AlertDialog wait = new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setMessage(L.t("Video yükleniyor…")).setCancelable(false).create();
+        if (!Ads.ready()) try { wait.show(); } catch (Exception ignored) {}
+        Ads.showRewarded(this, 15000, (ok, err) -> {
+            try { wait.dismiss(); } catch (Exception ignored) {}
+            adBusy = false;
+            if (ok) {
+                RemnaExpiry.add(this, RemnaConfig.REWARD_MS);
+                toast(L.t("+1 saat eklendi"));
+                return;
+            }
+            boolean loadFail = err == null || !err.contains("yarıda");
+            if (loadFail && attempt < 1) { requireAd(attempt + 1); return; }
+            if (loadFail) {
+                RemnaExpiry.atLeast(this, RemnaConfig.TRIAL_MS);
+                toast(L.t("Reklam yüklenemedi") + " — " + (RemnaConfig.TRIAL_MS / 60000) + L.t(" dk sonra tekrar denenecek"));
+                return;
+            }
+            toast(L.t("Video tamamlanmadı — VPN kapatıldı"));
+            prefs.edit().putLong("until", System.currentTimeMillis()).apply();
+            if (state == ON || state == CONNECTING) toggle();
+        });
+    }
+
     /* ---------------- ödüllü video ---------------- */
     void watchAd(Runnable after) {
         if (RemnaExpiry.remaining(this) > RemnaConfig.MAX_BANK_MS - RemnaConfig.REWARD_MS) { toast(L.t("Yeterli süren var")); return; }
@@ -995,20 +1037,25 @@ public class RemnaActivity extends Activity {
         Ads.showRewarded(this, 10000, (ok, err) -> {
             try { wait.dismiss(); } catch (Exception ignored) {}
             if (ok) {
+                prefs.edit().putInt("ad_fail", 0).apply();
                 RemnaExpiry.add(this, RemnaConfig.REWARD_MS);
                 toast(L.t("+1 saat eklendi"));
                 if (after != null) after.run();
             } else if (err != null && err.contains("yarıda")) {
                 toast(L.t("Süre için videoyu sonuna kadar izle"));
             } else {
-                // reklam yüklenemedi (ağ engeli vb.): kısa deneme süresi, 3 saatte bir
-                long last = prefs.getLong("trial_at", 0);
-                if (System.currentTimeMillis() - last > RemnaConfig.TRIAL_COOLDOWN_MS) {
-                    prefs.edit().putLong("trial_at", System.currentTimeMillis()).apply();
+                // reklam yüklenemedi (VPN kapalıyken reklam sunucusu erişilemez):
+                // 3 başarısız denemeden sonra kısa süre ver; kullanıcı VPN üzerinden video izleyip süre ekler
+                int fails = prefs.getInt("ad_fail", 0) + 1;
+                if (fails >= 3) {
+                    prefs.edit().putInt("ad_fail", 0).putBoolean("trial_hint", true).apply();
                     RemnaExpiry.add(this, RemnaConfig.TRIAL_MS);
                     toast(L.t("Reklam yüklenemedi — ") + (RemnaConfig.TRIAL_MS / 60000) + L.t(" dk deneme verildi. Bağlanınca video izleyip süre ekleyebilirsin."));
                     if (after != null) after.run();
-                } else toast(L.t("Reklam yüklenemedi: ") + err);
+                } else {
+                    prefs.edit().putInt("ad_fail", fails).apply();
+                    toast(L.t("Reklam yüklenemedi") + " (" + fails + "/3) — " + L.t("tekrar dene"));
+                }
             }
         });
     }

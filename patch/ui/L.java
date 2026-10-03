@@ -12,6 +12,12 @@ final class L {
     private static void put(String tr, String en, String ru, String tk) { M.put(tr, new String[]{en, ru, tk}); }
 
     static {
+        put("Bağlanınca kısa bir video izlenir", "A short video plays after connecting", "После подключения покажется короткое видео", "Birikenden soň gysga wideo görkezilýär");
+        put(" dk sonra tekrar denenecek", " min, then it will try again", " мин, затем повторим попытку", " minutdan soň gaýtadan synanyşylar");
+        put("Video tamamlanmadı — VPN kapatıldı", "Video not finished — VPN disconnected", "Видео не досмотрено — VPN отключён", "Wideo ahyryna çenli görülmedi — VPN öçürildi");
+        put("Reklam yüklenemedi", "Ad failed to load", "Реклама не загрузилась", "Mahabat ýüklenmedi");
+        put("tekrar dene", "try again", "попробуйте ещё раз", "gaýtadan synanyşyň");
+        put("Bağlandın — süre eklemek için video izle", "Connected — watch a video to add time", "Подключено — посмотрите видео, чтобы добавить время", "Birikdiňiz — wagt goşmak üçin wideo görüň");
         put("Kalan süre  %02d:%02d:%02d", "Time left  %02d:%02d:%02d", "Осталось  %02d:%02d:%02d", "Galan wagt  %02d:%02d:%02d");
         put("Süre yok — bağlanmak için video izle", "No time left — watch a video to connect", "Нет времени — посмотрите видео для подключения", "Wagt ýok — birikmek üçin wideo görüň");
         put("Süre doldu", "Time is up", "Время истекло", "Wagt gutardy");

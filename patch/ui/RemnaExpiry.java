@@ -24,6 +24,13 @@ public class RemnaExpiry extends BroadcastReceiver {
         schedule(c, u);
     }
 
+    /** Süreyi en az ms kadar garanti eder (reklam yüklenirken VPN kapanmasın). */
+    static void atLeast(Context c, long ms) {
+        long u = Math.max(until(c), System.currentTimeMillis() + ms);
+        prefs(c).edit().putLong("until", u).apply();
+        schedule(c, u);
+    }
+
     static void schedule(Context c, long at) {
         AlarmManager am = (AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
         if (am == null) return;

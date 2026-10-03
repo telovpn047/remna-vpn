@@ -138,7 +138,7 @@ final class RemnaConfig {{
     static final String ADMOB_BANNER = "{E('ADMOB_BANNER_ID', 'ca-app-pub-3940256099942544/6300978111')}";
     static final long REWARD_MS = {int(E('REWARD_MINUTES', '60'))} * 60000L;
     static final long MAX_BANK_MS = {int(E('MAX_BANK_HOURS', '3'))} * 3600000L;
-    static final long TRIAL_MS = {int(E('TRIAL_MINUTES', '15'))} * 60000L;
+    static final long TRIAL_MS = {int(E('TRIAL_MINUTES', '5'))} * 60000L;
     static final long TRIAL_COOLDOWN_MS = 3 * 3600000L;
     private RemnaConfig() {{}}
 }}
