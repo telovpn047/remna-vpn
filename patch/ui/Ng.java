@@ -232,14 +232,60 @@ final class Ng {
 
     /* ---- servis ---- */
     static String lastErr = "";
+    private static String vpnCls = null, mgrCls = null;
+
+    /** Uygulamadaki VPN servisini manifestten bulur (BIND_VPN_SERVICE izinli servis). */
+    static String vpnServiceClass(Context c) {
+        if (vpnCls != null) return vpnCls;
+        try {
+            android.content.pm.PackageInfo pi = c.getPackageManager().getPackageInfo(c.getPackageName(), android.content.pm.PackageManager.GET_SERVICES);
+            if (pi.services != null) for (android.content.pm.ServiceInfo si : pi.services) {
+                if ("android.permission.BIND_VPN_SERVICE".equals(si.permission)) { vpnCls = si.name; break; }
+            }
+        } catch (Throwable ignored) {}
+        return vpnCls;
+    }
+
+    /** Servis yöneticisi sınıfını APK içindeki sınıf adlarından bulur (v2rayNG sürümüne göre adı değişebiliyor). */
+    @SuppressWarnings("deprecation")
+    static String managerClass(Context c) {
+        if (mgrCls != null) return mgrCls.isEmpty() ? null : mgrCls;
+        Class<?> k = cls(SERVICE);
+        if (k != null) { mgrCls = k.getName(); return mgrCls; }
+        mgrCls = "";
+        try {
+            dalvik.system.DexFile df = new dalvik.system.DexFile(c.getPackageCodePath());
+            java.util.Enumeration<String> e = df.entries();
+            String best = null;
+            while (e.hasMoreElements()) {
+                String n = e.nextElement();
+                if (!n.startsWith("com.v2ray.ang") || n.contains("$")) continue;
+                String simple = n.substring(n.lastIndexOf('.') + 1);
+                if (!simple.endsWith("ServiceManager") && !simple.endsWith("CoreManager")) continue;
+                try {
+                    for (Method m : Class.forName(n).getDeclaredMethods()) {
+                        String mn = m.getName();
+                        if (mn.startsWith("startVService") || mn.equals("startV2Ray") || mn.equals("startCore")) { best = n; break; }
+                    }
+                } catch (Throwable ignored) {}
+                if (best != null) break;
+            }
+            if (best != null) mgrCls = best;
+        } catch (Throwable t) {
+            lastErr += " | dex: " + t.getMessage();
+        }
+        return mgrCls.isEmpty() ? null : mgrCls;
+    }
 
     /** Servisi başlat: v2rayNG sürümüne göre start* metotlarını dener. */
     static boolean start(Context c) {
-        Class<?> k = cls(SERVICE);
-        if (k == null) { lastErr = "V2RayServiceManager yok"; return false; }
+        String mn0 = managerClass(c);
+        Class<?> k = null;
+        try { if (mn0 != null) k = Class.forName(mn0); } catch (Throwable ignored) {}
+        if (k == null) { lastErr = "servis yöneticisi bulunamadı"; return false; }
         Object in = inst(k);
         StringBuilder err = new StringBuilder();
-        for (String name : new String[]{"startVServiceFromToggle", "startVService", "startV2Ray"}) {
+        for (String name : new String[]{"startVServiceFromToggle", "startVService", "startV2Ray", "startCore"}) {
             for (Method m : k.getDeclaredMethods()) {
                 if (!m.getName().equals(name)) continue;
                 Class<?>[] p = m.getParameterTypes();
@@ -277,10 +323,13 @@ final class Ng {
     /** Yedek yol: v2rayNG'nin VPN servisini doğrudan başlat (seçili sunucuyla çalışır). */
     static boolean startServiceDirect(Context c) {
         try {
+            String sc = vpnServiceClass(c);
+            if (sc == null) sc = VPN_SERVICES[0];
             android.content.Intent i = new android.content.Intent();
-            i.setClassName(c.getPackageName(), VPN_SERVICES[0]);
-            if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i); else c.startService(i);
-            lastErr += " | servis doğrudan başlatıldı";
+            i.setClassName(c.getPackageName(), sc);
+            android.content.ComponentName cn = Build.VERSION.SDK_INT >= 26 ? c.startForegroundService(i) : c.startService(i);
+            if (cn == null) { lastErr += " | servis yok: " + sc; return false; }
+            lastErr += " | servis başlatıldı: " + sc.substring(sc.lastIndexOf('.') + 1);
             return true;
         } catch (Throwable t) {
             lastErr += " | servis: " + t.getClass().getSimpleName() + " " + t.getMessage();
@@ -289,7 +338,10 @@ final class Ng {
     }
 
     static void stopServiceDirect(Context c) {
-        for (String s : VPN_SERVICES) {
+        String sc = vpnServiceClass(c);
+        java.util.List<String> all = new java.util.ArrayList<>(java.util.Arrays.asList(VPN_SERVICES));
+        if (sc != null) all.add(0, sc);
+        for (String s : all) {
             try {
                 android.content.Intent i = new android.content.Intent();
                 i.setClassName(c.getPackageName(), s);
@@ -299,7 +351,9 @@ final class Ng {
     }
 
     static void stop(Context c) {
-        try { call(SERVICE, new String[]{"stopVService", "stopV2Ray", "stopService"}, c); } catch (Exception ignored) {}
+        String m = managerClass(c);
+        String[] cl = m != null ? new String[]{m} : SERVICE;
+        try { call(cl, new String[]{"stopVService", "stopV2Ray", "stopCore"}, c); } catch (Exception ignored) {}
     }
 
     static void stopAll(Context c) {

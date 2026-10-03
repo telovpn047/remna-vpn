@@ -1027,7 +1027,10 @@ public class RemnaActivity extends Activity {
         b.append("Son hata: ").append(Ng.lastErr).append("\n");
         b.append("Reklam: ").append(Ads.ready() ? "hazır" : "yok " + Ads.error()).append("\n");
         b.append("Kalan süre (sn): ").append(RemnaExpiry.remaining(this) / 1000).append("\n");
-        b.append("Servis metotları: ").append(Ng.methods(Ng.SERVICE)).append("\n");
+        String mc = Ng.managerClass(this);
+        b.append("Yönetici: ").append(mc).append("\n");
+        b.append("VPN servisi: ").append(Ng.vpnServiceClass(this)).append("\n");
+        b.append("Servis metotları: ").append(mc == null ? "-" : Ng.methods(new String[]{mc})).append("\n");
         for (String[] cls : new String[][]{Ng.MMKV, Ng.SERVICE, Ng.CONFIG, Ng.SETTINGS}) {
             String found = "YOK";
             for (String c : cls) { try { Class.forName(c); found = c; break; } catch (Exception ignored) {} }
