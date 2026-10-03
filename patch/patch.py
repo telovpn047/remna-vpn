@@ -85,13 +85,47 @@ dst = os.path.join(main, "java", "com", "v2ray", "ang", "remna"); os.makedirs(ds
 write(os.path.join(dst, "RemnaHwid.java"), java)
 print(f"[hwid] HttpURLConnection: {hits_conn}, OkHttp: {hits_ok}")
 
+# 5a) Yapılandırma (gömülü abonelik, AdMob kimlikleri)
+def E(k, d=''):
+    return os.environ.get(k) or d
+cfg = f"""package com.v2ray.ang.remna;
+
+/** patch.py tarafından üretilir. */
+final class RemnaConfig {{
+    static final String SUB_URL = "{E('REMNA_SUB_URL', '')}";
+    static final String ADMOB_APP = "{E('ADMOB_APP_ID', 'ca-app-pub-3940256099942544~3347511713')}";
+    static final String ADMOB_REWARDED = "{E('ADMOB_REWARDED_ID', 'ca-app-pub-3940256099942544/5224354917')}";
+    static final String ADMOB_BANNER = "{E('ADMOB_BANNER_ID', 'ca-app-pub-3940256099942544/6300978111')}";
+    static final long REWARD_MS = {int(E('REWARD_MINUTES', '60'))} * 60000L;
+    static final long MAX_BANK_MS = {int(E('MAX_BANK_HOURS', '3'))} * 3600000L;
+    static final long TRIAL_MS = {int(E('TRIAL_MINUTES', '15'))} * 60000L;
+    static final long TRIAL_COOLDOWN_MS = 3 * 3600000L;
+    private RemnaConfig() {{}}
+}}
+"""
+os.makedirs(dst, exist_ok=True)
+write(os.path.join(dst, "RemnaConfig.java"), cfg)
+if not E('REMNA_SUB_URL'): sys.exit("✗ REMNA_SUB_URL boş")
+print("[cfg] RemnaConfig yazıldı")
+
+# 5b) AdMob bağımlılığı
+gk = os.path.join(app, "build.gradle.kts")
+g = read(gk)
+if "play-services-ads" not in g:
+    g, k = re.subn(r'(\ndependencies\s*\{)', r'\1\n    implementation("com.google.android.gms:play-services-ads:23.6.0")', g, count=1)
+    if k == 0: sys.exit("✗ dependencies bloğu bulunamadı")
+    write(gk, g)
+print("[ads] play-services-ads eklendi")
+
 # 5) Yeni ana ekran (RemnaActivity) + launcher
 for f in glob.glob(os.path.join(HERE, "ui", "*.java")):
     shutil.copy(f, os.path.join(dst, os.path.basename(f)))
 mp = os.path.join(main, "AndroidManifest.xml")
 m = read(mp)
 m, k = re.subn(r'\s*<category\s+android:name="android\.intent\.category\.LAUNCHER"\s*/>', "", m)
-act = """
+act = f"""
+        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="{E('ADMOB_APP_ID', 'ca-app-pub-3940256099942544~3347511713')}" />
+        <receiver android:name="com.v2ray.ang.remna.RemnaExpiry" android:exported="false" />
         <activity
             android:name="com.v2ray.ang.remna.RemnaActivity"
             android:exported="true"

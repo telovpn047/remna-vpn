@@ -69,7 +69,7 @@ public class RemnaActivity extends Activity {
     String status = "";
 
     Ui.PowerButton power;
-    TextView stateTv, serverTv, timerTv, autoSub, countTv;
+    TextView stateTv, serverTv, timerTv, autoSub, countTv, watchBtn;
     Ui.Switch autoSw;
     LinearLayout list;
 
@@ -81,7 +81,11 @@ public class RemnaActivity extends Activity {
         Window w = getWindow();
         w.setStatusBarColor(BG1);
         w.setNavigationBarColor(PANEL);
+        installCrashHandler();
         setContentView(build());
+        Ads.init(this);
+        showPreviousCrash();
+        ensureSubscription(false);
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF);
     }
@@ -119,12 +123,18 @@ public class RemnaActivity extends Activity {
         @Override
         public void run() {
             ui.removeCallbacks(this);
-            long since = prefs.getLong("on_since", 0);
-            if (state == ON && since > 0) {
-                long t = (System.currentTimeMillis() - since) / 1000;
-                timerTv.setText(String.format(java.util.Locale.US, "%02d:%02d:%02d", t / 3600, (t / 60) % 60, t % 60));
-                timerTv.setVisibility(View.VISIBLE);
-            } else timerTv.setVisibility(View.INVISIBLE);
+            long left = RemnaExpiry.remaining(RemnaActivity.this);
+            if (left > 0) {
+                long t = left / 1000;
+                timerTv.setText(String.format(java.util.Locale.US, "Kalan süre  %02d:%02d:%02d", t / 3600, (t / 60) % 60, t % 60));
+                timerTv.setTextColor(left < 5 * 60000 ? AMBER : TX2);
+            } else {
+                timerTv.setText("Süre yok — bağlanmak için video izle");
+                timerTv.setTextColor(TX3);
+                if (state == ON && !busy) { toast("Süre doldu"); toggle(); }
+            }
+            boolean full = left > RemnaConfig.MAX_BANK_MS - RemnaConfig.REWARD_MS;
+            watchBtn.setAlpha(full ? 0.45f : 1f);
             ui.postDelayed(this, 1000);
         }
     };
@@ -196,12 +206,8 @@ public class RemnaActivity extends Activity {
         title.setPadding(dp(10), 0, 0, 0);
         title.setOnLongClickListener(v -> { diag(); return true; });
         top.addView(title, new LinearLayout.LayoutParams(0, WC, 1));
-        View add = iconBtn(Ui.Icon.PLUS, 40, v -> addSubDialog());
-        top.addView(add, lp(dp(40), dp(40)));
         View gear = iconBtn(Ui.Icon.GEAR, 40, v -> openSettings());
-        LinearLayout.LayoutParams gl = lp(dp(40), dp(40));
-        gl.leftMargin = dp(10);
-        top.addView(gear, gl);
+        top.addView(gear, lp(dp(40), dp(40)));
         root.addView(top);
 
         // ---- otomatik
@@ -261,6 +267,16 @@ public class RemnaActivity extends Activity {
         LinearLayout.LayoutParams tl = lp(WC, WC);
         tl.topMargin = dp(10);
         center.addView(timerTv, tl);
+        watchBtn = text("▶  Video izle  ·  +1 saat", 13.5f, BG1, true);
+        watchBtn.setGravity(Gravity.CENTER);
+        watchBtn.setPadding(dp(16), dp(9), dp(16), dp(9));
+        GradientDrawable wb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{ACC, 0xFF7DD3FC});
+        wb.setCornerRadius(dp(20));
+        watchBtn.setBackground(wb);
+        watchBtn.setOnClickListener(v -> watchAd(null));
+        LinearLayout.LayoutParams wl = lp(WC, WC);
+        wl.topMargin = dp(10);
+        center.addView(watchBtn, wl);
         root.addView(center, new LinearLayout.LayoutParams(MP, 0, 1.15f));
 
         // ---- sunucu paneli
@@ -296,6 +312,13 @@ public class RemnaActivity extends Activity {
         list.setPadding(0, dp(4), 0, dp(16));
         sv.addView(list);
         panel.addView(sv, new LinearLayout.LayoutParams(MP, 0, 1));
+        View ad = Ads.banner(this);
+        if (ad != null) {
+            FrameLayout af = new FrameLayout(this);
+            af.addView(ad, new FrameLayout.LayoutParams(WC, WC, Gravity.CENTER));
+            af.setPadding(0, dp(4), 0, dp(6));
+            panel.addView(af, lp(MP, WC));
+        }
         root.addView(panel, new LinearLayout.LayoutParams(MP, 0, 1f));
 
         autoSw.set(auto(), false);
@@ -454,33 +477,18 @@ public class RemnaActivity extends Activity {
         Runnable[] fill = new Runnable[1];
         fill[0] = () -> {
             c.removeAllViews();
-            c.addView(section("ABONELİKLER"));
-            List<Object[]> subs = Ng.subscriptions();
-            if (subs.isEmpty()) c.addView(note("Henüz abonelik yok."));
-            for (Object[] sub : subs) {
-                String id = (String) sub[0];
-                String nm = str(Ng.get(sub[1], "remarks"));
-                String url = str(Ng.get(sub[1], "url"));
-                LinearLayout row = card();
-                LinearLayout col = new LinearLayout(this);
-                col.setOrientation(LinearLayout.VERTICAL);
-                TextView t = text(nm.isEmpty() ? "Abonelik" : nm, 15, TX, true);
-                col.addView(t);
-                TextView u = text(url, 12, TX3, false);
-                u.setSingleLine(true);
-                u.setEllipsize(TextUtils.TruncateAt.MIDDLE);
-                u.setPadding(0, dp(4), 0, 0);
-                col.addView(u);
-                row.addView(col, new LinearLayout.LayoutParams(0, WC, 1));
-                View del = iconBtn(Ui.Icon.TRASH, 36, v -> new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                        .setMessage("\"" + (nm.isEmpty() ? url : nm) + "\" ve sunucuları silinsin mi?")
-                        .setPositiveButton("Sil", (x, y) -> { if (!Ng.removeSubscription(id)) toast("Silinemedi"); fill[0].run(); refreshAll(); })
-                        .setNegativeButton("Vazgeç", null).show());
-                row.addView(del, lp(dp(36), dp(36)));
-                c.addView(row, cardLp());
-            }
-            c.addView(action(Ui.Icon.PLUS, "Abonelik ekle", v -> addSubDialog(() -> fill[0].run())), cardLp());
-            c.addView(action(Ui.Icon.REFRESH, "Tümünü güncelle", v -> updateSubs()), cardLp());
+            c.addView(section("SUNUCULAR"));
+            c.addView(action(Ui.Icon.REFRESH, "Sunucuları güncelle", v -> { ensureSubscription(true); }), cardLp());
+            LinearLayout tm = card();
+            LinearLayout tcol = new LinearLayout(this);
+            tcol.setOrientation(LinearLayout.VERTICAL);
+            tcol.addView(text("Kalan süre", 14, TX, true));
+            long lm = RemnaExpiry.remaining(this) / 60000;
+            TextView tv = text(lm > 0 ? (lm / 60 > 0 ? (lm / 60) + " sa " : "") + (lm % 60) + " dk" : "Süre yok", 12.5f, TX2, false);
+            tv.setPadding(0, dp(4), 0, 0);
+            tcol.addView(tv);
+            tm.addView(tcol, new LinearLayout.LayoutParams(0, WC, 1));
+            c.addView(tm, cardLp());
 
             c.addView(section("BAĞLANTI"));
             c.addView(action(Ui.Icon.SHIELD, "Uygulama bazlı VPN", v -> openClass("com.v2ray.ang.ui.PerAppProxyActivity")), cardLp());
@@ -577,7 +585,8 @@ public class RemnaActivity extends Activity {
             }).start();
             return;
         }
-        if (Ng.serverList().isEmpty()) { addSubDialog(); return; }
+        if (Ng.serverList().isEmpty()) { toast("Sunucular yükleniyor…"); ensureSubscription(true); return; }
+        if (RemnaExpiry.remaining(this) < 30000) { watchAd(this::toggle); return; }
         Intent i = VpnService.prepare(this);
         if (i != null) startActivityForResult(i, REQ_VPN);
         else connect();
@@ -658,20 +667,17 @@ public class RemnaActivity extends Activity {
         ui.post(() -> { ok[0] = Ng.start(this); l.countDown(); });
         try { l.await(5, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
         if (ok[0] && waitUp(true, 10000)) return true;
-        // yedek: v2rayNG kısayol aktivitesi (aç/kapat)
+        // yedek: VPN servisini doğrudan başlat
         if (!isUp()) {
-            ui.post(() -> Ng.toggleViaShortcut(this));
-            if (waitUp(true, 10000)) { Ng.lastErr += " | kısayol ile açıldı"; return true; }
+            ui.post(() -> Ng.startServiceDirect(this));
+            if (waitUp(true, 10000)) return true;
         }
         return false;
     }
 
     void stopService() {
-        Ng.stop(this);
-        if (!waitUp(false, 4000)) {
-            ui.post(() -> Ng.toggleViaShortcut(this));
-            waitUp(false, 4000);
-        }
+        Ng.stopAll(this);
+        waitUp(false, 5000);
     }
 
     boolean waitUp(boolean up, long ms) {
@@ -841,6 +847,79 @@ public class RemnaActivity extends Activity {
         }).start();
     }
 
+    /* ---------------- ödüllü video ---------------- */
+    void watchAd(Runnable after) {
+        if (RemnaExpiry.remaining(this) > RemnaConfig.MAX_BANK_MS - RemnaConfig.REWARD_MS) { toast("Yeterli süren var"); return; }
+        AlertDialog wait = new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setMessage("Video yükleniyor…").setCancelable(false).create();
+        if (!Ads.ready()) wait.show();
+        Ads.showRewarded(this, 10000, (ok, err) -> {
+            try { wait.dismiss(); } catch (Exception ignored) {}
+            if (ok) {
+                RemnaExpiry.add(this, RemnaConfig.REWARD_MS);
+                toast("+1 saat eklendi");
+                if (after != null) after.run();
+            } else if (err != null && err.contains("yarıda")) {
+                toast("Süre için videoyu sonuna kadar izle");
+            } else {
+                // reklam yüklenemedi (ağ engeli vb.): kısa deneme süresi, 3 saatte bir
+                long last = prefs.getLong("trial_at", 0);
+                if (System.currentTimeMillis() - last > RemnaConfig.TRIAL_COOLDOWN_MS) {
+                    prefs.edit().putLong("trial_at", System.currentTimeMillis()).apply();
+                    RemnaExpiry.add(this, RemnaConfig.TRIAL_MS);
+                    toast("Reklam yüklenemedi — " + (RemnaConfig.TRIAL_MS / 60000) + " dk deneme verildi. Bağlanınca video izleyip süre ekleyebilirsin.");
+                    if (after != null) after.run();
+                } else toast("Reklam yüklenemedi: " + err);
+            }
+        });
+    }
+
+    /* ---------------- gömülü abonelik ---------------- */
+    void ensureSubscription(boolean force) {
+        new Thread(() -> {
+            boolean has = false;
+            for (Object[] sub : Ng.subscriptions()) {
+                String url = str(Ng.get(sub[1], "url"));
+                if (url.equals(RemnaConfig.SUB_URL)) has = true;
+                else Ng.removeSubscription((String) sub[0]); // başka abonelikleri kaldır
+            }
+            if (!has) Ng.importText(RemnaConfig.SUB_URL);
+            long last = prefs.getLong("sub_updated", 0);
+            if (force || !has || Ng.serverList().isEmpty() || System.currentTimeMillis() - last > 6 * 3600000L) {
+                if (Ng.updateAll()) prefs.edit().putLong("sub_updated", System.currentTimeMillis()).apply();
+            }
+            ui.post(() -> { refreshAll(); if (force) toast("Sunucular güncellendi"); });
+        }).start();
+    }
+
+    /* ---------------- çökme kaydı ---------------- */
+    void installCrashHandler() {
+        Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((t, e) -> {
+            try {
+                java.io.StringWriter sw = new java.io.StringWriter();
+                e.printStackTrace(new java.io.PrintWriter(sw));
+                String st = sw.toString();
+                getSharedPreferences("remna", MODE_PRIVATE).edit().putString("crash", st.length() > 3000 ? st.substring(0, 3000) : st).commit();
+            } catch (Throwable ignored) {}
+            if (prev != null) prev.uncaughtException(t, e);
+        });
+    }
+
+    void showPreviousCrash() {
+        String c = prefs.getString("crash", null);
+        if (c == null) return;
+        prefs.edit().remove("crash").apply();
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                .setTitle("Önceki çökme")
+                .setMessage(c)
+                .setPositiveButton("Kopyala", (d, w) -> {
+                    ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("crash", c));
+                })
+                .setNegativeButton("Kapat", null).show();
+    }
+
     /** Başlığa uzun basınca: v2rayNG köprüsünün durumunu gösterir. */
     void diag() {
         StringBuilder b = new StringBuilder();
@@ -850,6 +929,8 @@ public class RemnaActivity extends Activity {
         b.append("SOCKS port: ").append(Ng.socksPort()).append(portOpen() ? " (açık)" : " (kapalı)").append("\n");
         b.append("VPN ağı: ").append(vpnNetwork() != null ? "var" : "yok").append("\n");
         b.append("Son hata: ").append(Ng.lastErr).append("\n");
+        b.append("Reklam: ").append(Ads.ready() ? "hazır" : "yok " + Ads.error()).append("\n");
+        b.append("Kalan süre (sn): ").append(RemnaExpiry.remaining(this) / 1000).append("\n");
         b.append("Servis metotları: ").append(Ng.methods(Ng.SERVICE)).append("\n");
         for (String[] cls : new String[][]{Ng.MMKV, Ng.SERVICE, Ng.CONFIG, Ng.SETTINGS}) {
             String found = "YOK";

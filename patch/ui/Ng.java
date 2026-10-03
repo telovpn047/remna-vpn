@@ -1,6 +1,7 @@
 package com.v2ray.ang.remna;
 
 import android.content.Context;
+import android.os.Build;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -271,22 +272,39 @@ final class Ng {
         return null;
     }
 
-    /** v2rayNG'nin kısayol aktivitesiyle aç/kapat (yedek yol). */
-    static boolean toggleViaShortcut(Context c) {
+    static final String[] VPN_SERVICES = {"com.v2ray.ang.service.V2RayVpnService", "com.v2ray.ang.service.V2RayProxyOnlyService"};
+
+    /** Yedek yol: v2rayNG'nin VPN servisini doğrudan başlat (seçili sunucuyla çalışır). */
+    static boolean startServiceDirect(Context c) {
         try {
             android.content.Intent i = new android.content.Intent();
-            i.setClassName(c.getPackageName(), "com.v2ray.ang.ui.ScSwitchActivity");
-            i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-            c.startActivity(i);
+            i.setClassName(c.getPackageName(), VPN_SERVICES[0]);
+            if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(i); else c.startService(i);
+            lastErr += " | servis doğrudan başlatıldı";
             return true;
         } catch (Throwable t) {
-            lastErr += " | kısayol: " + t.getMessage();
+            lastErr += " | servis: " + t.getClass().getSimpleName() + " " + t.getMessage();
             return false;
+        }
+    }
+
+    static void stopServiceDirect(Context c) {
+        for (String s : VPN_SERVICES) {
+            try {
+                android.content.Intent i = new android.content.Intent();
+                i.setClassName(c.getPackageName(), s);
+                c.stopService(i);
+            } catch (Throwable ignored) {}
         }
     }
 
     static void stop(Context c) {
         try { call(SERVICE, new String[]{"stopVService", "stopV2Ray", "stopService"}, c); } catch (Exception ignored) {}
+    }
+
+    static void stopAll(Context c) {
+        stop(c);
+        stopServiceDirect(c);
     }
 
     static String methods(String[] classes) {

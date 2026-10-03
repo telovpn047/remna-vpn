@@ -68,6 +68,11 @@ jobs:
           ls -la V2rayNG/app/libs
 
       - name: Remna VPN yaması
+        env:
+          REMNA_SUB_URL: ${{ secrets.REMNA_SUB_URL }}
+          ADMOB_APP_ID: ${{ secrets.ADMOB_APP_ID }}
+          ADMOB_REWARDED_ID: ${{ secrets.ADMOB_REWARDED_ID }}
+          ADMOB_BANNER_ID: ${{ secrets.ADMOB_BANNER_ID }}
         run: python3 patch/patch.py up
 
       - name: APK derle
