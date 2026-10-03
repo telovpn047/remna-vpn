@@ -28,6 +28,34 @@ for p in glob.glob(os.path.join(app, "build.gradle*")):
 print(f"[ad] app_name değiştirildi: {n} yer")
 if n == 0: sys.exit("✗ app_name bulunamadı")
 
+# 1b) Arayüz metinlerindeki "v2rayNG" adı
+nn = 0
+for p_ in glob.glob(os.path.join(app, "src", "*", "res", "values*", "strings*.xml")):
+    t = read(p_)
+    t2, k = re.subn(r'(>[^<]*?)v2rayNG', lambda m: m.group(1) + APP_NAME, t)
+    while k:
+        t2, k2 = re.subn(r'(>[^<]*?)v2rayNG', lambda m: m.group(1) + APP_NAME, t2)
+        k = k2
+    if t2 != t: write(p_, t2); nn += 1
+print(f"[ad] metinlerde v2rayNG değiştirildi: {nn} dosya")
+
+# 1c) Renkler: Remna paleti (vurgu turkuaz, arka plan koyu lacivert)
+ACC_C, BG_C = "#22D3EE", "#0B1020"
+nc = 0
+for p_ in glob.glob(os.path.join(app, "src", "main", "res", "values*", "*.xml")):
+    t = read(p_)
+    if "<color" not in t: continue
+    def recolor(m):
+        name = m.group(1).lower()
+        if any(x in name for x in ("primary", "accent", "secondary")) and "text" not in name and "on_" not in name and "onprimary" not in name:
+            return f'<color name="{m.group(1)}">{ACC_C}</color>'
+        if any(x in name for x in ("background", "surface", "window")) and "night" in p_ :
+            return f'<color name="{m.group(1)}">{BG_C}</color>'
+        return m.group(0)
+    t2 = re.sub(r'<color name="([^"]+)">#[0-9A-Fa-f]{6,8}</color>', recolor, t)
+    if t2 != t: write(p_, t2); nc += 1
+print(f"[renk] {nc} dosyada renkler güncellendi")
+
 # 2) applicationId
 gp = os.path.join(app, "build.gradle.kts")
 if not os.path.exists(gp): gp = os.path.join(app, "build.gradle")
@@ -35,6 +63,18 @@ s = read(gp)
 s2, k = re.subn(r'(applicationId\s*=?\s*)"com\.v2ray\.ang"', r'\1"' + APP_ID + '"', s)
 write(gp, s2)
 print(f"[id] applicationId -> {APP_ID}: {k}")
+
+# 2b) User-Agent: "v2rayNG/x.y" -> "RemnaVPN/x.y"
+ua = 0
+for r_ in (os.path.join(main, "java"), os.path.join(main, "kotlin")):
+    if not os.path.isdir(r_): continue
+    for dp_, _, fs_ in os.walk(r_):
+        for f_ in fs_:
+            if not f_.endswith((".kt", ".java")): continue
+            q = os.path.join(dp_, f_); t = read(q)
+            t2, k = re.subn(r'"v2rayNG/', '"RemnaVPN/', t)
+            if k: write(q, t2); ua += k; print(f"[ua] {os.path.relpath(q, root)}")
+print(f"[ua] User-Agent değiştirildi: {ua}")
 
 # 3) İkonlar: eski ic_launcher* kaynaklarını sil, yenilerini koy
 removed = 0

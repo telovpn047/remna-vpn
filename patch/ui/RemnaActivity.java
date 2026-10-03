@@ -84,6 +84,8 @@ public class RemnaActivity extends Activity {
         w.setStatusBarColor(BG1);
         w.setNavigationBarColor(PANEL);
         installCrashHandler();
+        L.init(prefs.getString("lang", ""));
+        try { androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES); } catch (Throwable ignored) {}
         setContentView(build());
         Ads.init(this);
         showPreviousCrash();
@@ -129,12 +131,12 @@ public class RemnaActivity extends Activity {
             long left = RemnaExpiry.remaining(RemnaActivity.this);
             if (left > 0) {
                 long t = left / 1000;
-                timerTv.setText(String.format(java.util.Locale.US, "Kalan süre  %02d:%02d:%02d", t / 3600, (t / 60) % 60, t % 60));
+                timerTv.setText(String.format(java.util.Locale.US, L.t("Kalan süre  %02d:%02d:%02d"), t / 3600, (t / 60) % 60, t % 60));
                 timerTv.setTextColor(left < 5 * 60000 ? AMBER : TX2);
             } else {
-                timerTv.setText("Süre yok — bağlanmak için video izle");
+                timerTv.setText(L.t("Süre yok — bağlanmak için video izle"));
                 timerTv.setTextColor(TX3);
-                if (state == ON && !busy) { toast("Süre doldu"); toggle(); }
+                if (state == ON && !busy) { toast(L.t("Süre doldu")); toggle(); }
             }
             boolean full = left > RemnaConfig.MAX_BANK_MS - RemnaConfig.REWARD_MS;
             watchBtn.setAlpha(full ? 0.45f : 1f);
@@ -227,7 +229,7 @@ public class RemnaActivity extends Activity {
         LinearLayout ac = new LinearLayout(this);
         ac.setOrientation(LinearLayout.VERTICAL);
         ac.setPadding(dp(14), 0, dp(10), 0);
-        ac.addView(text("Otomatik seçim", 15.5f, TX, true));
+        ac.addView(text(L.t("Otomatik seçim"), 15.5f, TX, true));
         autoSub = text("", 12.5f, TX2, false);
         autoSub.setPadding(0, dp(4), 0, 0);
         autoSub.setSingleLine(true);
@@ -270,7 +272,7 @@ public class RemnaActivity extends Activity {
         LinearLayout.LayoutParams tl = lp(WC, WC);
         tl.topMargin = dp(10);
         center.addView(timerTv, tl);
-        watchBtn = text("Video izle  •  +1 saat", 14, Color.WHITE, true);
+        watchBtn = text(L.t("Video izle  •  +1 saat"), 14, Color.WHITE, true);
         watchBtn.setShadowLayer(4, 0, 1, 0x55000000);
         watchBtn.setIncludeFontPadding(true);
         watchBtn.setGravity(Gravity.CENTER);
@@ -313,8 +315,8 @@ public class RemnaActivity extends Activity {
         autoSw.set(auto(), false);
         if (auto()) {
             String last = prefs.getString("last_good", null);
-            autoSub.setText(state == ON && last != null ? "Seçilen: " + Ng.info(last)[0] : "En hızlı çalışan sunucu otomatik seçilir");
-        } else autoSub.setText("Kapalı — listeden sunucu seç");
+            autoSub.setText(state == ON && last != null ? L.t("Seçilen: ") + Ng.info(last)[0] : L.t("En hızlı çalışan sunucu otomatik seçilir"));
+        } else autoSub.setText(L.t("Kapalı — listeden sunucu seç"));
     }
 
     static int hue(String s) {
@@ -338,13 +340,13 @@ public class RemnaActivity extends Activity {
         String name, meta;
         if (a) {
             String last = prefs.getString("last_good", null);
-            name = "Otomatik";
-            meta = state == ON && last != null ? Ng.info(last)[0] : "En hızlı sunucu seçilir";
+            name = L.t("Otomatik");
+            meta = state == ON && last != null ? Ng.info(last)[0] : L.t("En hızlı sunucu seçilir");
         } else if (sel != null) {
             String[] in = Ng.info(sel);
             name = in[0].isEmpty() ? in[1] : in[0];
-            meta = state == ON ? "Bağlı" : "Değiştirmek için dokun";
-        } else { name = "Sunucu seç"; meta = ""; }
+            meta = state == ON ? L.t("Bağlı") : L.t("Değiştirmek için dokun");
+        } else { name = L.t("Sunucu seç"); meta = ""; }
         View av;
         if (a) {
             FrameLayout f = new FrameLayout(this);
@@ -375,7 +377,7 @@ public class RemnaActivity extends Activity {
         m.setEllipsize(TextUtils.TruncateAt.END);
         c.addView(m);
         serverCard.addView(c, new LinearLayout.LayoutParams(0, WC, 1));
-        TextView cnt = text(Ng.serverList().size() + " sunucu", 12, TX2, false);
+        TextView cnt = text(Ng.serverList().size() + L.t(" sunucu"), 12, TX2, false);
         cnt.setPadding(0, 0, dp(6), 0);
         serverCard.addView(cnt);
         serverCard.addView(new Ui.Icon(this, Ui.Icon.CHEVRON, TX2), lp(dp(20), dp(20)));
@@ -401,7 +403,7 @@ public class RemnaActivity extends Activity {
         LinearLayout ph = new LinearLayout(this);
         ph.setGravity(Gravity.CENTER_VERTICAL);
         ph.setPadding(dp(4), 0, 0, dp(6));
-        ph.addView(text("Sunucular", 17, TX, true));
+        ph.addView(text(L.t("Sunucular"), 17, TX, true));
         countTv = text("0", 12, TX2, true);
         countTv.setPadding(dp(8), dp(3), dp(8), dp(3));
         countTv.setBackground(round(0x1AFFFFFF, 10));
@@ -457,10 +459,10 @@ public class RemnaActivity extends Activity {
             e.setPadding(dp(16), dp(30), dp(16), dp(30));
             Ui.Icon ic = new Ui.Icon(this, Ui.Icon.LINK, TX3);
             e.addView(ic, lp(dp(36), dp(36)));
-            TextView t1 = text("Henüz sunucu yok", 15, TX, true);
+            TextView t1 = text(L.t("Henüz sunucu yok"), 15, TX, true);
             t1.setPadding(0, dp(12), 0, dp(6));
             e.addView(t1);
-            TextView t2 = text("Abonelik linkini eklemek için + düğmesine dokun", 13, TX2, false);
+            TextView t2 = text(L.t("Sunucuları yüklemek için yenile düğmesine dokun"), 13, TX2, false);
             t2.setGravity(Gravity.CENTER);
             e.addView(t2);
             list.addView(e, lp(MP, WC));
@@ -498,7 +500,7 @@ public class RemnaActivity extends Activity {
             n.setEllipsize(TextUtils.TruncateAt.END);
             c.addView(n);
             if (isAct || isSel) {
-                TextView s = text(isAct ? "Bağlı" : "Seçili", 12, isAct ? GREEN : ACC, false);
+                TextView s = text(isAct ? L.t("Bağlı") : L.t("Seçili"), 12, isAct ? GREEN : ACC, false);
                 s.setPadding(0, dp(4), 0, 0);
                 c.addView(s);
             }
@@ -507,7 +509,7 @@ public class RemnaActivity extends Activity {
             Integer ms = pings.get(id);
             if (ms != null) {
                 int col = ms < 0 ? RED : ms < 300 ? GREEN : ms < 800 ? AMBER : RED;
-                TextView pt = text(ms < 0 ? "Yok" : ms + " ms", 12, col, true);
+                TextView pt = text(ms < 0 ? L.t("Yok") : ms + " ms", 12, col, true);
                 pt.setPadding(dp(9), dp(4), dp(9), dp(4));
                 pt.setBackground(round((col & 0x00FFFFFF) | 0x22000000, 10));
                 row.addView(pt);
@@ -534,11 +536,11 @@ public class RemnaActivity extends Activity {
         power.setState(s);
         if (s == ON && prev != ON && prefs.getLong("on_since", 0) == 0) prefs.edit().putLong("on_since", System.currentTimeMillis()).apply();
         if (s == OFF) prefs.edit().putLong("on_since", 0).apply();
-        stateTv.setText(s == ON ? "Korunuyor" : s == CONNECTING ? "Bağlanıyor…" : "Bağlı değil");
+        stateTv.setText(s == ON ? L.t("Korunuyor") : s == CONNECTING ? L.t("Bağlanıyor…") : L.t("Bağlı değil"));
         stateTv.setTextColor(s == ON ? GREEN : s == CONNECTING ? AMBER : TX);
         if (msg != null) status = msg;
         else if (s == ON) status = currentName();
-        else if (s == OFF) status = auto() ? "Bağlanmak için dokun" : currentName();
+        else if (s == OFF) status = auto() ? L.t("Bağlanmak için dokun") : currentName();
         serverTv.setText(status);
         if (prev != s) { renderAuto(); renderList(); }
     }
@@ -562,7 +564,7 @@ public class RemnaActivity extends Activity {
         LinearLayout h = new LinearLayout(this);
         h.setGravity(Gravity.CENTER_VERTICAL);
         h.setPadding(dp(20), dp(14), dp(20), dp(10));
-        h.addView(text("Ayarlar", 20, TX, true), new LinearLayout.LayoutParams(0, WC, 1));
+        h.addView(text(L.t("Ayarlar"), 20, TX, true), new LinearLayout.LayoutParams(0, WC, 1));
         h.addView(iconBtn(Ui.Icon.CLOSE, 40, v -> d.dismiss()), lp(dp(40), dp(40)));
         box.addView(h);
 
@@ -576,32 +578,53 @@ public class RemnaActivity extends Activity {
         Runnable[] fill = new Runnable[1];
         fill[0] = () -> {
             c.removeAllViews();
-            c.addView(section("SUNUCULAR"));
-            c.addView(action(Ui.Icon.REFRESH, "Sunucuları güncelle", v -> { ensureSubscription(true); }), cardLp());
+            c.addView(section(L.t("SUNUCULAR")));
+            c.addView(action(Ui.Icon.REFRESH, L.t("Sunucuları güncelle"), v -> { ensureSubscription(true); }), cardLp());
             LinearLayout tm = card();
             LinearLayout tcol = new LinearLayout(this);
             tcol.setOrientation(LinearLayout.VERTICAL);
-            tcol.addView(text("Kalan süre", 14, TX, true));
+            tcol.addView(text(L.t("Kalan süre"), 14, TX, true));
             long lm = RemnaExpiry.remaining(this) / 60000;
-            TextView tv = text(lm > 0 ? (lm / 60 > 0 ? (lm / 60) + " sa " : "") + (lm % 60) + " dk" : "Süre yok", 12.5f, TX2, false);
+            TextView tv = text(lm > 0 ? (lm / 60 > 0 ? (lm / 60) + L.t(" sa ") : "") + (lm % 60) + L.t(" dk") : L.t("Süre yok"), 12.5f, TX2, false);
             tv.setPadding(0, dp(4), 0, 0);
             tcol.addView(tv);
             tm.addView(tcol, new LinearLayout.LayoutParams(0, WC, 1));
             c.addView(tm, cardLp());
 
-            c.addView(section("BAĞLANTI"));
-            c.addView(action(Ui.Icon.SHIELD, "Uygulama bazlı VPN", v -> openClass("com.v2ray.ang.ui.PerAppProxyActivity")), cardLp());
-            c.addView(action(Ui.Icon.LINK, "Yönlendirme kuralları", v -> openClass("com.v2ray.ang.ui.RoutingSettingActivity")), cardLp());
-            c.addView(action(Ui.Icon.GEAR, "Gelişmiş ayarlar", v -> openClass("com.v2ray.ang.ui.SettingsActivity")), cardLp());
+            c.addView(section(L.t("BAĞLANTI")));
+            c.addView(action(Ui.Icon.SHIELD, L.t("Uygulama bazlı VPN"), v -> openClass("com.v2ray.ang.ui.PerAppProxyActivity")), cardLp());
+            c.addView(action(Ui.Icon.LINK, L.t("Yönlendirme kuralları"), v -> openClass("com.v2ray.ang.ui.RoutingSettingActivity")), cardLp());
+            c.addView(action(Ui.Icon.GEAR, L.t("Gelişmiş ayarlar"), v -> openClass("com.v2ray.ang.ui.SettingsActivity")), cardLp());
 
-            c.addView(section("SORUN GİDERME"));
-            c.addView(action(Ui.Icon.SIGNAL, "Günlük (log)", v -> openLog()), cardLp());
+            c.addView(section(L.t("DİL")));
+            LinearLayout lr = card();
+            lr.addView(new Ui.Icon(this, Ui.Icon.LINK, ACC), lp(dp(22), dp(22)));
+            TextView lt = text(L.t("Dil"), 15, TX, false);
+            lt.setPadding(dp(14), 0, 0, 0);
+            lr.addView(lt, new LinearLayout.LayoutParams(0, WC, 1));
+            lr.addView(text(L.name(prefs.getString("lang", "")), 14, TX2, false));
+            lr.addView(new Ui.Icon(this, Ui.Icon.CHEVRON, TX3), lp(dp(18), dp(18)));
+            lr.setOnClickListener(v -> {
+                String[] names = new String[L.CODES.length];
+                for (int i = 0; i < names.length; i++) names[i] = L.name(L.CODES[i]);
+                new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+                        .setTitle(L.t("Dil"))
+                        .setItems(names, (dd, which) -> {
+                            prefs.edit().putString("lang", L.CODES[which]).apply();
+                            d.dismiss();
+                            recreate();
+                        }).show();
+            });
+            c.addView(lr, cardLp());
 
-            c.addView(section("CİHAZ"));
+            c.addView(section(L.t("SORUN GİDERME")));
+            c.addView(action(Ui.Icon.SIGNAL, L.t("Günlük (log)"), v -> openLog()), cardLp());
+
+            c.addView(section(L.t("CİHAZ")));
             LinearLayout hw = card();
             LinearLayout hc = new LinearLayout(this);
             hc.setOrientation(LinearLayout.VERTICAL);
-            hc.addView(text("Cihaz kimliği (HWID)", 14, TX, true));
+            hc.addView(text(L.t("Cihaz kimliği (HWID)"), 14, TX, true));
             TextView hv = text(RemnaHwid.id(), 12.5f, TX2, false);
             hv.setTypeface(Typeface.MONOSPACE);
             hv.setPadding(0, dp(4), 0, 0);
@@ -610,12 +633,12 @@ public class RemnaActivity extends Activity {
             hw.setOnClickListener(v -> {
                 ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                 if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("hwid", RemnaHwid.id()));
-                toast("Kopyalandı");
+                toast(L.t("Kopyalandı"));
             });
             c.addView(hw, cardLp());
             String ver = "";
             try { ver = getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception ignored) {}
-            TextView foot = text("Remna VPN " + ver + " · Xray çekirdeği", 12, TX3, false);
+            TextView foot = text("Remna VPN " + ver + L.t(" · Xray çekirdeği"), 12, TX3, false);
             foot.setGravity(Gravity.CENTER);
             foot.setPadding(0, dp(24), 0, 0);
             c.addView(foot, lp(MP, WC));
@@ -679,7 +702,7 @@ public class RemnaActivity extends Activity {
         if (state == ON || state == CONNECTING) {
             cancel = true;
             busy = true;
-            setState(CONNECTING, "Kesiliyor…");
+            setState(CONNECTING, L.t("Kesiliyor…"));
             new Thread(() -> {
                 stopService();
                 busy = false;
@@ -687,7 +710,7 @@ public class RemnaActivity extends Activity {
             }).start();
             return;
         }
-        if (Ng.serverList().isEmpty()) { toast("Sunucular yükleniyor…"); ensureSubscription(true); return; }
+        if (Ng.serverList().isEmpty()) { toast(L.t("Sunucular yükleniyor…")); ensureSubscription(true); return; }
         if (RemnaExpiry.remaining(this) < 30000) { watchAd(this::toggle); return; }
         Intent i = VpnService.prepare(this);
         if (i != null) startActivityForResult(i, REQ_VPN);
@@ -699,7 +722,7 @@ public class RemnaActivity extends Activity {
         super.onActivityResult(req, res, data);
         if (req == REQ_VPN) {
             if (res == RESULT_OK) connect();
-            else toast("VPN izni verilmedi");
+            else toast(L.t("VPN izni verilmedi"));
         }
     }
 
@@ -713,7 +736,7 @@ public class RemnaActivity extends Activity {
         if (busy) return;
         busy = true;
         cancel = false;
-        setState(CONNECTING, auto() ? "En hızlı sunucu aranıyor…" : currentName());
+        setState(CONNECTING, auto() ? L.t("En hızlı sunucu aranıyor…") : currentName());
         new Thread(() -> {
             boolean ok = auto() ? connectAuto() : connectManual();
             busy = false;
@@ -725,16 +748,16 @@ public class RemnaActivity extends Activity {
     boolean connectManual() {
         String sel = Ng.selected();
         if (sel == null) { List<String> l = Ng.serverList(); if (l.isEmpty()) return false; sel = l.get(0); Ng.select(sel); }
-        if (!restart()) { toast("Bağlanılamadı: " + Ng.lastErr); return false; }
+        if (!restart()) { toast(L.t("Bağlanılamadı: ") + Ng.lastErr); return false; }
         int ms = verify();
         pings.put(sel, ms);
-        if (ms < 0) toast("Bağlandı ama internet çalışmıyor — başka sunucu dene");
+        if (ms < 0) toast(L.t("Bağlandı ama internet çalışmıyor — başka sunucu dene"));
         return true;
     }
 
     boolean connectAuto() {
         List<String> ranked = rank();
-        if (ranked.isEmpty()) { toast("Sunucu yok"); return false; }
+        if (ranked.isEmpty()) { toast(L.t("Sunucu yok")); return false; }
         String last = prefs.getString("last_good", null);
         if (last != null && ranked.remove(last)) ranked.add(0, last);
         int tries = 0;
@@ -743,7 +766,7 @@ public class RemnaActivity extends Activity {
             Integer tcp = pings.get(id);
             if (tcp != null && tcp < 0 && tries > 1) continue;
             Ng.select(id);
-            status("Deneniyor: " + Ng.info(id)[0]);
+            status(L.t("Deneniyor: ") + Ng.info(id)[0]);
             if (!restart()) continue;
             int ms = verify();
             if (ms > 0) {
@@ -757,7 +780,7 @@ public class RemnaActivity extends Activity {
         // hiçbiri doğrulanamadı: en iyi tcp sonucuyla bağlı kal
         Ng.select(ranked.get(0));
         restart();
-        toast(isUp() ? "Bağlandı, internet testi başarısız" : "Bağlanılamadı: " + Ng.lastErr);
+        toast(isUp() ? L.t("Bağlandı, internet testi başarısız") : L.t("Bağlanılamadı: ") + Ng.lastErr);
         return isUp();
     }
 
@@ -885,7 +908,7 @@ public class RemnaActivity extends Activity {
     static int score(Integer v) { return v == null || v == -2 ? 50000 : v < 0 ? 100000 : v; }
 
     void pingAll() {
-        toast("Ping test…");
+        toast(L.t("Ping test…"));
         new Thread(this::rank).start();
     }
 
@@ -926,7 +949,7 @@ public class RemnaActivity extends Activity {
                 refreshAll();
                 if (after != null) after.run();
                 if (!ok) fallbackAddSub(url);
-                else toast(Ng.serverList().isEmpty() ? "Sunucu gelmedi — linki kontrol et" : "Sunucular güncellendi");
+                else toast(Ng.serverList().isEmpty() ? "Sunucu gelmedi — linki kontrol et" : L.t("Sunucular güncellendi"));
             });
         }).start();
     }
@@ -942,36 +965,36 @@ public class RemnaActivity extends Activity {
     }
 
     void updateSubs() {
-        toast("Abonelik güncelleniyor…");
+        toast(L.t("Abonelik güncelleniyor…"));
         new Thread(() -> {
             boolean ok = Ng.updateAll();
-            ui.post(() -> { refreshAll(); toast(ok ? "Güncellendi" : "Güncellenemedi"); });
+            ui.post(() -> { refreshAll(); toast(ok ? L.t("Güncellendi") : L.t("Güncellenemedi")); });
         }).start();
     }
 
     /* ---------------- ödüllü video ---------------- */
     void watchAd(Runnable after) {
-        if (RemnaExpiry.remaining(this) > RemnaConfig.MAX_BANK_MS - RemnaConfig.REWARD_MS) { toast("Yeterli süren var"); return; }
+        if (RemnaExpiry.remaining(this) > RemnaConfig.MAX_BANK_MS - RemnaConfig.REWARD_MS) { toast(L.t("Yeterli süren var")); return; }
         AlertDialog wait = new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setMessage("Video yükleniyor…").setCancelable(false).create();
+                .setMessage(L.t("Video yükleniyor…")).setCancelable(false).create();
         if (!Ads.ready()) wait.show();
         Ads.showRewarded(this, 10000, (ok, err) -> {
             try { wait.dismiss(); } catch (Exception ignored) {}
             if (ok) {
                 RemnaExpiry.add(this, RemnaConfig.REWARD_MS);
-                toast("+1 saat eklendi");
+                toast(L.t("+1 saat eklendi"));
                 if (after != null) after.run();
             } else if (err != null && err.contains("yarıda")) {
-                toast("Süre için videoyu sonuna kadar izle");
+                toast(L.t("Süre için videoyu sonuna kadar izle"));
             } else {
                 // reklam yüklenemedi (ağ engeli vb.): kısa deneme süresi, 3 saatte bir
                 long last = prefs.getLong("trial_at", 0);
                 if (System.currentTimeMillis() - last > RemnaConfig.TRIAL_COOLDOWN_MS) {
                     prefs.edit().putLong("trial_at", System.currentTimeMillis()).apply();
                     RemnaExpiry.add(this, RemnaConfig.TRIAL_MS);
-                    toast("Reklam yüklenemedi — " + (RemnaConfig.TRIAL_MS / 60000) + " dk deneme verildi. Bağlanınca video izleyip süre ekleyebilirsin.");
+                    toast(L.t("Reklam yüklenemedi — ") + (RemnaConfig.TRIAL_MS / 60000) + L.t(" dk deneme verildi. Bağlanınca video izleyip süre ekleyebilirsin."));
                     if (after != null) after.run();
-                } else toast("Reklam yüklenemedi: " + err);
+                } else toast(L.t("Reklam yüklenemedi: ") + err);
             }
         });
     }
@@ -990,7 +1013,7 @@ public class RemnaActivity extends Activity {
             if (force || !has || Ng.serverList().isEmpty() || System.currentTimeMillis() - last > 6 * 3600000L) {
                 if (Ng.updateAll()) prefs.edit().putLong("sub_updated", System.currentTimeMillis()).apply();
             }
-            ui.post(() -> { refreshAll(); if (force) toast("Sunucular güncellendi"); });
+            ui.post(() -> { refreshAll(); if (force) toast(L.t("Sunucular güncellendi")); });
         }).start();
     }
 
@@ -1013,13 +1036,13 @@ public class RemnaActivity extends Activity {
         if (c == null) return;
         prefs.edit().remove("crash").apply();
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-                .setTitle("Önceki çökme")
+                .setTitle(L.t("Önceki çökme"))
                 .setMessage(c)
-                .setPositiveButton("Kopyala", (d, w) -> {
+                .setPositiveButton(L.t("Kopyala"), (d, w) -> {
                     ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                     if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("crash", c));
                 })
-                .setNegativeButton("Kapat", null).show();
+                .setNegativeButton(L.t("Kapat"), null).show();
     }
 
     String diagText() {
@@ -1064,10 +1087,10 @@ public class RemnaActivity extends Activity {
         LinearLayout h = new LinearLayout(this);
         h.setGravity(Gravity.CENTER_VERTICAL);
         h.setPadding(dp(20), dp(14), dp(20), dp(10));
-        h.addView(text("Günlük", 20, TX, true), new LinearLayout.LayoutParams(0, WC, 1));
+        h.addView(text(L.t("Günlük"), 20, TX, true), new LinearLayout.LayoutParams(0, WC, 1));
         h.addView(iconBtn(Ui.Icon.CLOSE, 40, v -> d.dismiss()), lp(dp(40), dp(40)));
         box.addView(h);
-        TextView body = text("Yükleniyor…", 11, TX2, false);
+        TextView body = text(L.t("Yükleniyor…"), 11, TX2, false);
         body.setTypeface(Typeface.MONOSPACE);
         body.setTextIsSelectable(true);
         body.setPadding(dp(16), dp(8), dp(16), dp(24));
@@ -1083,29 +1106,29 @@ public class RemnaActivity extends Activity {
             cur[0] = t;
             ui.post(() -> { body.setText(t); sv.post(() -> sv.fullScroll(View.FOCUS_DOWN)); });
         }).start();
-        TextView copy = text("Kopyala", 14, Color.WHITE, true);
+        TextView copy = text(L.t("Kopyala"), 14, Color.WHITE, true);
         copy.setGravity(Gravity.CENTER);
         copy.setPadding(dp(12), dp(12), dp(12), dp(12));
         copy.setBackground(round(0xFF0891B2, 14));
         copy.setOnClickListener(v -> {
             ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
             if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("remna-log", cur[0]));
-            toast("Kopyalandı — sohbete yapıştır");
+            toast(L.t("Kopyalandı — sohbete yapıştır"));
         });
         bar.addView(copy, new LinearLayout.LayoutParams(0, WC, 1));
-        TextView ref = text("Yenile", 14, TX, true);
+        TextView ref = text(L.t("Yenile"), 14, TX, true);
         ref.setGravity(Gravity.CENTER);
         ref.setPadding(dp(12), dp(12), dp(12), dp(12));
         ref.setBackground(roundStroke(CARD, 14, LINE));
-        ref.setOnClickListener(v -> { body.setText("Yükleniyor…"); load.run(); });
+        ref.setOnClickListener(v -> { body.setText(L.t("Yükleniyor…")); load.run(); });
         LinearLayout.LayoutParams rl2 = new LinearLayout.LayoutParams(0, WC, 1);
         rl2.leftMargin = dp(10);
         bar.addView(ref, rl2);
-        TextView allB = text("Tümü", 14, TX, true);
+        TextView allB = text(L.t("Tümü"), 14, TX, true);
         allB.setGravity(Gravity.CENTER);
         allB.setPadding(dp(12), dp(12), dp(12), dp(12));
         allB.setBackground(roundStroke(CARD, 14, LINE));
-        allB.setOnClickListener(v -> { all[0] = !all[0]; allB.setText(all[0] ? "Filtreli" : "Tümü"); body.setText("Yükleniyor…"); load.run(); });
+        allB.setOnClickListener(v -> { all[0] = !all[0]; allB.setText(all[0] ? L.t("Filtreli") : L.t("Tümü")); body.setText(L.t("Yükleniyor…")); load.run(); });
         LinearLayout.LayoutParams al2 = new LinearLayout.LayoutParams(0, WC, 1);
         al2.leftMargin = dp(10);
         bar.addView(allB, al2);
@@ -1168,7 +1191,7 @@ public class RemnaActivity extends Activity {
             b.append(found).append("\n");
         }
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert).setTitle("Tanılama").setMessage(b.toString())
-                .setPositiveButton("Tamam", null)
+                .setPositiveButton(L.t("Tamam"), null)
                 .setNeutralButton("Logu kopyala", (d, w) -> copyLog(b.toString()))
                 .show();
     }
@@ -1181,7 +1204,7 @@ public class RemnaActivity extends Activity {
             i.setClassName(getPackageName(), cls);
             startActivity(i);
         } catch (Exception e) {
-            toast("Açılamadı");
+            toast(L.t("Açılamadı"));
         }
     }
 }
