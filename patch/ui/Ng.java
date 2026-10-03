@@ -369,6 +369,42 @@ final class Ng {
         return n.toString();
     }
 
+    /**
+     * v2rayNG ana ekranı açılışta geoip/geosite dosyalarını kopyalar ve yönlendirme kurallarını hazırlar.
+     * Biz o ekranı atladığımız için aynı hazırlığı burada yapıyoruz (yoksa Xray çekirdeği başlamaz).
+     */
+    static String initCore(Context c) {
+        StringBuilder r = new StringBuilder();
+        for (String m : new String[]{"initRoutingRulesets", "initRoutingRuleset"}) {
+            try { call(SETTINGS, new String[]{m}, c); r.append(m).append(" ok; "); break; } catch (Exception ignored) {}
+        }
+        try { call(SETTINGS, new String[]{"initAssets"}, c, c.getAssets()); r.append("initAssets ok; "); } catch (Exception ignored) {}
+        java.util.List<java.io.File> dirs = new java.util.ArrayList<>();
+        try { java.io.File d = c.getExternalFilesDir("assets"); if (d != null) dirs.add(d); } catch (Exception ignored) {}
+        try { dirs.add(c.getDir("assets", 0)); } catch (Exception ignored) {}
+        int copied = 0;
+        try {
+            String[] names = c.getAssets().list("");
+            if (names != null) for (String n : names) {
+                if (!n.contains("geo") || !n.endsWith(".dat")) continue;
+                for (java.io.File d : dirs) {
+                    java.io.File f = new java.io.File(d, n);
+                    if (f.exists() && f.length() > 1024) continue;
+                    d.mkdirs();
+                    try (java.io.InputStream in = c.getAssets().open(n); java.io.OutputStream out = new java.io.FileOutputStream(f)) {
+                        byte[] buf = new byte[64 * 1024];
+                        int k;
+                        while ((k = in.read(buf)) > 0) out.write(buf, 0, k);
+                        copied++;
+                    } catch (Exception e) { r.append(n).append(" kopyalanamadı; "); }
+                }
+            }
+        } catch (Exception e) { r.append("assets: ").append(e.getMessage()); }
+        r.append("geo kopyalanan: ").append(copied).append(" → ");
+        for (java.io.File d : dirs) r.append(d.getAbsolutePath()).append(' ');
+        return r.toString();
+    }
+
     static int socksPort() {
         try {
             Object r = call(SETTINGS, new String[]{"getSocksPort"});

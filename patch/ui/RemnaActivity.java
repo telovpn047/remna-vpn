@@ -73,6 +73,7 @@ public class RemnaActivity extends Activity {
     Ui.Switch autoSw;
     LinearLayout list, serverCard;
     Dialog serversDlg;
+    volatile String coreInit = "";
 
     /* ---------------- yaşam döngüsü ---------------- */
     @Override
@@ -86,6 +87,7 @@ public class RemnaActivity extends Activity {
         setContentView(build());
         Ads.init(this);
         showPreviousCrash();
+        new Thread(() -> coreInit = Ng.initCore(this)).start();
         ensureSubscription(false);
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF);
@@ -341,7 +343,7 @@ public class RemnaActivity extends Activity {
         } else if (sel != null) {
             String[] in = Ng.info(sel);
             name = in[0].isEmpty() ? in[1] : in[0];
-            meta = (in[3].isEmpty() ? "" : in[3].toUpperCase()) + (in[4].isEmpty() ? "" : " · " + in[4]);
+            meta = state == ON ? "Bağlı" : "Değiştirmek için dokun";
         } else { name = "Sunucu seç"; meta = ""; }
         View av;
         if (a) {
@@ -495,10 +497,11 @@ public class RemnaActivity extends Activity {
             n.setSingleLine(true);
             n.setEllipsize(TextUtils.TruncateAt.END);
             c.addView(n);
-            TextView s = text(meta.toString(), 12, TX3, false);
-            s.setPadding(0, dp(4), 0, 0);
-            s.setSingleLine(true);
-            c.addView(s);
+            if (isAct || isSel) {
+                TextView s = text(isAct ? "Bağlı" : "Seçili", 12, isAct ? GREEN : ACC, false);
+                s.setPadding(0, dp(4), 0, 0);
+                c.addView(s);
+            }
             row.addView(c, new LinearLayout.LayoutParams(0, WC, 1));
 
             Integer ms = pings.get(id);
@@ -590,6 +593,9 @@ public class RemnaActivity extends Activity {
             c.addView(action(Ui.Icon.SHIELD, "Uygulama bazlı VPN", v -> openClass("com.v2ray.ang.ui.PerAppProxyActivity")), cardLp());
             c.addView(action(Ui.Icon.LINK, "Yönlendirme kuralları", v -> openClass("com.v2ray.ang.ui.RoutingSettingActivity")), cardLp());
             c.addView(action(Ui.Icon.GEAR, "Gelişmiş ayarlar", v -> openClass("com.v2ray.ang.ui.SettingsActivity")), cardLp());
+
+            c.addView(section("SORUN GİDERME"));
+            c.addView(action(Ui.Icon.SIGNAL, "Günlük (log)", v -> openLog()), cardLp());
 
             c.addView(section("CİHAZ"));
             LinearLayout hw = card();
@@ -1014,6 +1020,101 @@ public class RemnaActivity extends Activity {
                     if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("crash", c));
                 })
                 .setNegativeButton("Kapat", null).show();
+    }
+
+    String diagText() {
+        StringBuilder b = new StringBuilder();
+        b.append("Sunucu: ").append(Ng.serverList().size()).append(" · Seçili: ").append(Ng.info(String.valueOf(Ng.selected()))[0]).append("\n");
+        b.append("SOCKS ").append(Ng.socksPort()).append(portOpen() ? " açık" : " kapalı").append(" · VPN ağı: ").append(vpnNetwork() != null ? "var" : "yok").append("\n");
+        String mc = Ng.managerClass(this);
+        b.append("Yönetici: ").append(mc).append("\nVPN servisi: ").append(Ng.vpnServiceClass(this)).append("\n");
+        b.append("Son hata: ").append(Ng.lastErr).append("\n");
+        b.append("Çekirdek hazırlığı: ").append(coreInit).append("\n");
+        return b.toString();
+    }
+
+    String readLog(boolean all) {
+        StringBuilder out = new StringBuilder();
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"logcat", "-d", "-v", "time", "-t", "2000"});
+            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
+            java.util.ArrayDeque<String> keep = new java.util.ArrayDeque<>();
+            java.util.regex.Pattern want = java.util.regex.Pattern.compile("(?i)(v2ray|xray|libv2ray|hev|tun2socks|vpnservice|com\\.v2ray|remna|AndroidRuntime|FATAL|Exception|failed)");
+            String line;
+            while ((line = r.readLine()) != null) {
+                if (!all && !want.matcher(line).find()) continue;
+                if (line.contains("chromium")) continue;
+                keep.add(line);
+                if (keep.size() > 300) keep.poll();
+            }
+            for (String l : keep) out.append(l).append('\n');
+        } catch (Exception e) {
+            out.append("logcat okunamadı: ").append(e.getMessage());
+        }
+        return out.length() == 0 ? "(kayıt yok)" : out.toString();
+    }
+
+    /** Ayarlar → Günlük: tanılama + filtrelenmiş logcat, kopyalanabilir. */
+    void openLog() {
+        Dialog d = new Dialog(this, android.R.style.Theme_Material_NoActionBar);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackgroundColor(BG1);
+        box.setFitsSystemWindows(true);
+        LinearLayout h = new LinearLayout(this);
+        h.setGravity(Gravity.CENTER_VERTICAL);
+        h.setPadding(dp(20), dp(14), dp(20), dp(10));
+        h.addView(text("Günlük", 20, TX, true), new LinearLayout.LayoutParams(0, WC, 1));
+        h.addView(iconBtn(Ui.Icon.CLOSE, 40, v -> d.dismiss()), lp(dp(40), dp(40)));
+        box.addView(h);
+        TextView body = text("Yükleniyor…", 11, TX2, false);
+        body.setTypeface(Typeface.MONOSPACE);
+        body.setTextIsSelectable(true);
+        body.setPadding(dp(16), dp(8), dp(16), dp(24));
+        ScrollView sv = new ScrollView(this);
+        sv.addView(body);
+        box.addView(sv, new LinearLayout.LayoutParams(MP, 0, 1));
+        LinearLayout bar = new LinearLayout(this);
+        bar.setPadding(dp(16), dp(8), dp(16), dp(12));
+        final String[] cur = {""};
+        final boolean[] all = {false};
+        Runnable load = () -> new Thread(() -> {
+            String t = "== TANILAMA ==\n" + diagText() + "\n== LOG" + (all[0] ? " (tümü)" : " (filtreli)") + " ==\n" + readLog(all[0]);
+            cur[0] = t;
+            ui.post(() -> { body.setText(t); sv.post(() -> sv.fullScroll(View.FOCUS_DOWN)); });
+        }).start();
+        TextView copy = text("Kopyala", 14, Color.WHITE, true);
+        copy.setGravity(Gravity.CENTER);
+        copy.setPadding(dp(12), dp(12), dp(12), dp(12));
+        copy.setBackground(round(0xFF0891B2, 14));
+        copy.setOnClickListener(v -> {
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("remna-log", cur[0]));
+            toast("Kopyalandı — sohbete yapıştır");
+        });
+        bar.addView(copy, new LinearLayout.LayoutParams(0, WC, 1));
+        TextView ref = text("Yenile", 14, TX, true);
+        ref.setGravity(Gravity.CENTER);
+        ref.setPadding(dp(12), dp(12), dp(12), dp(12));
+        ref.setBackground(roundStroke(CARD, 14, LINE));
+        ref.setOnClickListener(v -> { body.setText("Yükleniyor…"); load.run(); });
+        LinearLayout.LayoutParams rl2 = new LinearLayout.LayoutParams(0, WC, 1);
+        rl2.leftMargin = dp(10);
+        bar.addView(ref, rl2);
+        TextView allB = text("Tümü", 14, TX, true);
+        allB.setGravity(Gravity.CENTER);
+        allB.setPadding(dp(12), dp(12), dp(12), dp(12));
+        allB.setBackground(roundStroke(CARD, 14, LINE));
+        allB.setOnClickListener(v -> { all[0] = !all[0]; allB.setText(all[0] ? "Filtreli" : "Tümü"); body.setText("Yükleniyor…"); load.run(); });
+        LinearLayout.LayoutParams al2 = new LinearLayout.LayoutParams(0, WC, 1);
+        al2.leftMargin = dp(10);
+        bar.addView(allB, al2);
+        box.addView(bar);
+        d.setContentView(box);
+        Window w = d.getWindow();
+        if (w != null) { w.setStatusBarColor(BG1); w.setNavigationBarColor(BG1); }
+        d.show();
+        load.run();
     }
 
     /** Uygulamanın kendi logcat kayıtları (VPN süreci dahil, aynı UID) — izin gerektirmez. */
