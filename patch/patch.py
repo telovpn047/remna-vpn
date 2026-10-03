@@ -76,6 +76,25 @@ for r_ in (os.path.join(main, "java"), os.path.join(main, "kotlin")):
             if k: write(q, t2); ua += k; print(f"[ua] {os.path.relpath(q, root)}")
 print(f"[ua] User-Agent değiştirildi: {ua}")
 
+# 2c) Uygulamanın kendi trafiği de VPN'den geçsin (reklamlar ISP DNS engeline takılmasın).
+#     v2rayNG kendi paketini VPN dışında bırakıyor; Xray soketleri zaten protect() ile korunuyor.
+ex = 0
+for r_ in (os.path.join(main, "java"), os.path.join(main, "kotlin")):
+    if not os.path.isdir(r_): continue
+    for dp_, _, fs_ in os.walk(r_):
+        for f_ in fs_:
+            if not f_.endswith(".kt"): continue
+            q = os.path.join(dp_, f_); t = read(q)
+            if "addDisallowedApplication" not in t: continue
+            lines = t.split("\n"); out_ = []
+            for ln in lines:
+                if "addDisallowedApplication(" in ln and any(k in ln for k in ("APPLICATION_ID", "packageName", "ANG_PACKAGE", "applicationContext.packageName")):
+                    out_.append(re.sub(r'\S.*', '// remna: kendi paketi VPN içinde', ln, count=1)); ex += 1
+                else:
+                    out_.append(ln)
+            if ex: write(q, "\n".join(out_)); print(f"[vpn] {os.path.relpath(q, root)}")
+print(f"[vpn] kendi paketini dışlayan satır kaldırıldı: {ex}")
+
 # 3) İkonlar: eski ic_launcher* kaynaklarını sil, yenilerini koy
 removed = 0
 for p in glob.glob(os.path.join(main, "res", "mipmap-*", "ic_launcher*")):

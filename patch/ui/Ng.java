@@ -419,8 +419,8 @@ final class Ng {
         for (Object it : (List<Object>) list) {
             String dom = s(get(it, "domain")).toLowerCase(), tag = s(get(it, "outboundTag")).toLowerCase();
             String rem = s(get(it, "remarks")).toLowerCase();
-            boolean ads = dom.contains("ads") || rem.contains("ad");
-            if (!ads || !tag.contains("block")) continue;
+            boolean ads = dom.contains("ads") || dom.contains("doubleclick") || rem.contains("ad");
+            if (!ads || !(tag.contains("block") || tag.contains("black"))) continue;
             Object en = get(it, "enabled");
             if (Boolean.FALSE.equals(en)) continue;
             try { it.getClass().getMethod("setEnabled", boolean.class).invoke(it, false); changed++; } catch (Exception ignored) {}
