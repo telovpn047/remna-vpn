@@ -71,7 +71,8 @@ public class RemnaActivity extends Activity {
     Ui.PowerButton power;
     TextView stateTv, serverTv, timerTv, autoSub, countTv, watchBtn;
     Ui.Switch autoSw;
-    LinearLayout list;
+    LinearLayout list, serverCard;
+    Dialog serversDlg;
 
     /* ---------------- yaşam döngüsü ---------------- */
     @Override
@@ -267,59 +268,37 @@ public class RemnaActivity extends Activity {
         LinearLayout.LayoutParams tl = lp(WC, WC);
         tl.topMargin = dp(10);
         center.addView(timerTv, tl);
-        watchBtn = text("▶  Video izle  ·  +1 saat", 13.5f, BG1, true);
+        watchBtn = text("Video izle  •  +1 saat", 14, Color.WHITE, true);
+        watchBtn.setShadowLayer(4, 0, 1, 0x55000000);
+        watchBtn.setIncludeFontPadding(true);
         watchBtn.setGravity(Gravity.CENTER);
         watchBtn.setPadding(dp(16), dp(9), dp(16), dp(9));
-        GradientDrawable wb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{ACC, 0xFF7DD3FC});
+        GradientDrawable wb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{0xFF0891B2, 0xFF6366F1});
         wb.setCornerRadius(dp(20));
         watchBtn.setBackground(wb);
         watchBtn.setOnClickListener(v -> watchAd(null));
         LinearLayout.LayoutParams wl = lp(WC, WC);
         wl.topMargin = dp(10);
         center.addView(watchBtn, wl);
-        root.addView(center, new LinearLayout.LayoutParams(MP, 0, 1.15f));
+        root.addView(center, new LinearLayout.LayoutParams(MP, 0, 1f));
 
-        // ---- sunucu paneli
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        GradientDrawable pb = new GradientDrawable();
-        pb.setColor(PANEL);
-        float r = dp(26);
-        pb.setCornerRadii(new float[]{r, r, r, r, 0, 0, 0, 0});
-        panel.setBackground(pb);
-        panel.setPadding(dp(16), dp(16), dp(16), 0);
-        LinearLayout ph = new LinearLayout(this);
-        ph.setGravity(Gravity.CENTER_VERTICAL);
-        ph.setPadding(dp(4), 0, 0, dp(6));
-        ph.addView(text("Sunucular", 16, TX, true));
-        countTv = text("0", 12, TX2, true);
-        countTv.setPadding(dp(8), dp(3), dp(8), dp(3));
-        countTv.setBackground(round(0x1AFFFFFF, 10));
-        LinearLayout.LayoutParams cl = lp(WC, WC);
-        cl.leftMargin = dp(8);
-        ph.addView(countTv, cl);
-        ph.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
-        ph.addView(iconBtn(Ui.Icon.SIGNAL, 36, v -> pingAll()), lp(dp(36), dp(36)));
-        View rf = iconBtn(Ui.Icon.REFRESH, 36, v -> updateSubs());
-        LinearLayout.LayoutParams rl = lp(dp(36), dp(36));
-        rl.leftMargin = dp(8);
-        ph.addView(rf, rl);
-        panel.addView(ph);
-        ScrollView sv = new ScrollView(this);
-        sv.setVerticalScrollBarEnabled(false);
-        list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(0, dp(4), 0, dp(16));
-        sv.addView(list);
-        panel.addView(sv, new LinearLayout.LayoutParams(MP, 0, 1));
+        // ---- seçili sunucu kartı (dokununca liste açılır)
+        serverCard = new LinearLayout(this);
+        serverCard.setGravity(Gravity.CENTER_VERTICAL);
+        serverCard.setPadding(dp(14), dp(12), dp(14), dp(12));
+        serverCard.setBackground(roundStroke(PANEL, 18, LINE));
+        serverCard.setOnClickListener(v -> openServers());
+        LinearLayout.LayoutParams scl = lp(MP, WC);
+        scl.leftMargin = dp(20); scl.rightMargin = dp(20); scl.bottomMargin = dp(10);
+        root.addView(serverCard, scl);
+
         View ad = Ads.banner(this);
         if (ad != null) {
             FrameLayout af = new FrameLayout(this);
             af.addView(ad, new FrameLayout.LayoutParams(WC, WC, Gravity.CENTER));
-            af.setPadding(0, dp(4), 0, dp(6));
-            panel.addView(af, lp(MP, WC));
+            af.setPadding(0, 0, 0, dp(8));
+            root.addView(af, lp(MP, WC));
         }
-        root.addView(panel, new LinearLayout.LayoutParams(MP, 0, 1f));
 
         autoSw.set(auto(), false);
         setState(OFF, null);
@@ -349,7 +328,123 @@ public class RemnaActivity extends Activity {
         return r.toUpperCase();
     }
 
+    void renderCard() {
+        if (serverCard == null) return;
+        serverCard.removeAllViews();
+        boolean a = auto();
+        String sel = Ng.selected();
+        String name, meta;
+        if (a) {
+            String last = prefs.getString("last_good", null);
+            name = "Otomatik";
+            meta = state == ON && last != null ? Ng.info(last)[0] : "En hızlı sunucu seçilir";
+        } else if (sel != null) {
+            String[] in = Ng.info(sel);
+            name = in[0].isEmpty() ? in[1] : in[0];
+            meta = (in[3].isEmpty() ? "" : in[3].toUpperCase()) + (in[4].isEmpty() ? "" : " · " + in[4]);
+        } else { name = "Sunucu seç"; meta = ""; }
+        View av;
+        if (a) {
+            FrameLayout f = new FrameLayout(this);
+            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{0x3322D3EE, 0x338B5CF6});
+            g.setShape(GradientDrawable.OVAL);
+            f.setBackground(g);
+            f.addView(new Ui.Icon(this, Ui.Icon.BOLT, ACC), new FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER));
+            av = f;
+        } else {
+            TextView t = text(initials(name), 13, Color.WHITE, true);
+            t.setGravity(Gravity.CENTER);
+            GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{hue(name), hue(name + "x")});
+            g.setShape(GradientDrawable.OVAL);
+            t.setBackground(g);
+            av = t;
+        }
+        serverCard.addView(av, lp(dp(40), dp(40)));
+        LinearLayout c = new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setPadding(dp(12), 0, dp(8), 0);
+        TextView n = text(name, 15.5f, TX, true);
+        n.setSingleLine(true);
+        n.setEllipsize(TextUtils.TruncateAt.END);
+        c.addView(n);
+        TextView m = text(meta, 12.5f, TX3, false);
+        m.setPadding(0, dp(4), 0, 0);
+        m.setSingleLine(true);
+        m.setEllipsize(TextUtils.TruncateAt.END);
+        c.addView(m);
+        serverCard.addView(c, new LinearLayout.LayoutParams(0, WC, 1));
+        TextView cnt = text(Ng.serverList().size() + " sunucu", 12, TX2, false);
+        cnt.setPadding(0, 0, dp(6), 0);
+        serverCard.addView(cnt);
+        serverCard.addView(new Ui.Icon(this, Ui.Icon.CHEVRON, TX2), lp(dp(20), dp(20)));
+    }
+
+    /** Sunucu listesi: alttan açılan sayfa. */
+    void openServers() {
+        Dialog d = new Dialog(this, android.R.style.Theme_Material_NoActionBar);
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable pb = new GradientDrawable();
+        pb.setColor(PANEL);
+        float r = dp(26);
+        pb.setCornerRadii(new float[]{r, r, r, r, 0, 0, 0, 0});
+        panel.setBackground(pb);
+        panel.setPadding(dp(16), dp(10), dp(16), 0);
+        View grip = new View(this);
+        grip.setBackground(round(0x33FFFFFF, 3));
+        LinearLayout.LayoutParams gl = lp(dp(40), dp(5));
+        gl.gravity = Gravity.CENTER_HORIZONTAL;
+        gl.bottomMargin = dp(12);
+        panel.addView(grip, gl);
+        LinearLayout ph = new LinearLayout(this);
+        ph.setGravity(Gravity.CENTER_VERTICAL);
+        ph.setPadding(dp(4), 0, 0, dp(6));
+        ph.addView(text("Sunucular", 17, TX, true));
+        countTv = text("0", 12, TX2, true);
+        countTv.setPadding(dp(8), dp(3), dp(8), dp(3));
+        countTv.setBackground(round(0x1AFFFFFF, 10));
+        LinearLayout.LayoutParams cl = lp(WC, WC);
+        cl.leftMargin = dp(8);
+        ph.addView(countTv, cl);
+        ph.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+        ph.addView(iconBtn(Ui.Icon.SIGNAL, 36, v -> pingAll()), lp(dp(36), dp(36)));
+        LinearLayout.LayoutParams rl = lp(dp(36), dp(36));
+        rl.leftMargin = dp(8);
+        ph.addView(iconBtn(Ui.Icon.REFRESH, 36, v -> updateSubs()), rl);
+        LinearLayout.LayoutParams xl = lp(dp(36), dp(36));
+        xl.leftMargin = dp(8);
+        ph.addView(iconBtn(Ui.Icon.CLOSE, 36, v -> d.dismiss()), xl);
+        panel.addView(ph);
+        ScrollView sv = new ScrollView(this);
+        sv.setVerticalScrollBarEnabled(false);
+        list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(0, dp(4), 0, dp(24));
+        sv.addView(list);
+        panel.addView(sv, new LinearLayout.LayoutParams(MP, 0, 1));
+        FrameLayout wrap = new FrameLayout(this);
+        wrap.setOnClickListener(v -> d.dismiss());
+        int h = (int) (getResources().getDisplayMetrics().heightPixels * 0.72f);
+        FrameLayout.LayoutParams pl = new FrameLayout.LayoutParams(MP, h, Gravity.BOTTOM);
+        panel.setClickable(true);
+        wrap.addView(panel, pl);
+        d.setContentView(wrap);
+        Window w = d.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(0x99000000));
+            w.setLayout(MP, MP);
+            w.setNavigationBarColor(PANEL);
+            w.setWindowAnimations(android.R.style.Animation_InputMethod);
+        }
+        d.setOnDismissListener(x -> { list = null; serversDlg = null; renderCard(); });
+        serversDlg = d;
+        renderList();
+        d.show();
+    }
+
     void renderList() {
+        renderCard();
+        if (list == null) return;
         list.removeAllViews();
         List<String> ids = Ng.serverList();
         countTv.setText(String.valueOf(ids.size()));
@@ -418,6 +513,7 @@ public class RemnaActivity extends Activity {
             row.setOnClickListener(v -> {
                 prefs.edit().putBoolean("auto", false).apply();
                 Ng.select(gid);
+                if (serversDlg != null) serversDlg.dismiss();
                 refreshAll();
                 if (state == ON) reconnect();
             });
