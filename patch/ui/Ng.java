@@ -415,19 +415,27 @@ final class Ng {
         try { list = call(SETTINGS, new String[]{"getRoutingRulesets"}); } catch (Exception ignored) {}
         if (!(list instanceof List)) try { list = call(MMKV, new String[]{"decodeRoutingRulesets"}); } catch (Exception ignored) {}
         if (!(list instanceof List)) return "kurallar okunamadı";
-        int changed = 0;
+        int changed = 0, cn = 0;
         for (Object it : (List<Object>) list) {
             String dom = s(get(it, "domain")).toLowerCase(), tag = s(get(it, "outboundTag")).toLowerCase();
-            String rem = s(get(it, "remarks")).toLowerCase();
-            boolean ads = dom.contains("ads") || dom.contains("doubleclick") || rem.contains("ad");
-            if (!ads || !(tag.contains("block") || tag.contains("black"))) continue;
+            String ip = s(get(it, "ip")).toLowerCase(), rem = s(get(it, "remarks")).toLowerCase();
             Object en = get(it, "enabled");
             if (Boolean.FALSE.equals(en)) continue;
-            try { it.getClass().getMethod("setEnabled", boolean.class).invoke(it, false); changed++; } catch (Exception ignored) {}
+            boolean ads = (dom.contains("ads") || dom.contains("doubleclick") || rem.contains("ad")) && (tag.contains("block") || tag.contains("black"));
+            // Çin'e özel "doğrudan" kurallar Türkmenistan'da anlamsız; üstelik bu alan adları (ör. googleads.g.doubleclick.net)
+            // yerel DNS'e gidip Türkmentelekom tarafından 127.0.0.1'e çevriliyor.
+            boolean china = tag.contains("direct") && (dom.contains(":cn") || dom.contains("-cn") || dom.contains("@cn") || ip.contains(":cn"));
+            if (!ads && !china) continue;
+            try { it.getClass().getMethod("setEnabled", boolean.class).invoke(it, false); changed++; if (china) cn++; } catch (Exception ignored) {}
         }
         if (changed > 0) {
             try { call(MMKV, new String[]{"encodeRoutingRulesets"}, list); } catch (Exception e) { return "kaydedilemedi: " + e.getMessage(); }
         }
+        // Yerel (domestic) DNS de tünelden giden DoH olsun
+        for (String[] kv : new String[][]{{"pref_domestic_dns", "https://1.1.1.1/dns-query"}, {"pref_vpn_dns", "1.1.1.1"}}) {
+            try { call(MMKV, new String[]{"encodeSettings"}, kv[0], kv[1]); } catch (Exception ignored) {}
+        }
+        if (cn > 0) return "kural kapatıldı: " + changed + " (Çin: " + cn + ")";
         return "reklam kuralı kapatıldı: " + changed;
     }
 
