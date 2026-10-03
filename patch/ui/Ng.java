@@ -405,6 +405,32 @@ final class Ng {
         return r.toString();
     }
 
+    /**
+     * v2rayNG'nin varsayılan "reklam engelle" yönlendirme kuralı AdMob'u da engelliyor (VPN açıkken
+     * ödüllü video yüklenmiyor). Bu kuralı kapatır.
+     */
+    @SuppressWarnings("unchecked")
+    static String unblockAds() {
+        Object list = null;
+        try { list = call(SETTINGS, new String[]{"getRoutingRulesets"}); } catch (Exception ignored) {}
+        if (!(list instanceof List)) try { list = call(MMKV, new String[]{"decodeRoutingRulesets"}); } catch (Exception ignored) {}
+        if (!(list instanceof List)) return "kurallar okunamadı";
+        int changed = 0;
+        for (Object it : (List<Object>) list) {
+            String dom = s(get(it, "domain")).toLowerCase(), tag = s(get(it, "outboundTag")).toLowerCase();
+            String rem = s(get(it, "remarks")).toLowerCase();
+            boolean ads = dom.contains("ads") || rem.contains("ad");
+            if (!ads || !tag.contains("block")) continue;
+            Object en = get(it, "enabled");
+            if (Boolean.FALSE.equals(en)) continue;
+            try { it.getClass().getMethod("setEnabled", boolean.class).invoke(it, false); changed++; } catch (Exception ignored) {}
+        }
+        if (changed > 0) {
+            try { call(MMKV, new String[]{"encodeRoutingRulesets"}, list); } catch (Exception e) { return "kaydedilemedi: " + e.getMessage(); }
+        }
+        return "reklam kuralı kapatıldı: " + changed;
+    }
+
     static int socksPort() {
         try {
             Object r = call(SETTINGS, new String[]{"getSocksPort"});

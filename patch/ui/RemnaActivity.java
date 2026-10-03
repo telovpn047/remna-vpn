@@ -57,8 +57,8 @@ public class RemnaActivity extends Activity {
     static final int OFF = 0, CONNECTING = 1, ON = 2;
     static final int REQ_VPN = 41, REQ_NOTIF = 42;
 
-    static final int BG1 = 0xFF070B16, BG2 = 0xFF0F1630, PANEL = 0xFF111830, CARD = 0x0FFFFFFF, LINE = 0x14FFFFFF;
-    static final int ACC = 0xFF22D3EE, ACC2 = 0xFF8B5CF6, GREEN = 0xFF10B981, AMBER = 0xFFF59E0B, RED = 0xFFEF4444;
+    static final int BG1 = 0xFF070B16, BG2 = 0xFF0F1630, PANEL = 0xFF111830, CARD = 0x0DFFFFFF, LINE = 0x0FFFFFFF;
+    static final int ACC = 0xFF38BDF8, ACC2 = 0xFF818CF8, GREEN = 0xFF34D399, AMBER = 0xFFF59E0B, RED = 0xFFEF4444;
     static final int TX = 0xFFF1F5F9, TX2 = 0xFF94A3B8, TX3 = 0xFF64748B;
 
     final Handler ui = new Handler(Looper.getMainLooper());
@@ -70,6 +70,7 @@ public class RemnaActivity extends Activity {
 
     Ui.PowerButton power;
     TextView stateTv, serverTv, timerTv, autoSub, countTv, watchBtn;
+    View watchRow;
     Ui.Switch autoSw;
     LinearLayout list, serverCard;
     Dialog serversDlg;
@@ -89,7 +90,7 @@ public class RemnaActivity extends Activity {
         setContentView(build());
         Ads.init(this);
         showPreviousCrash();
-        new Thread(() -> coreInit = Ng.initCore(this)).start();
+        new Thread(() -> coreInit = Ng.initCore(this) + " | " + Ng.unblockAds()).start();
         ensureSubscription(false);
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF);
@@ -139,7 +140,7 @@ public class RemnaActivity extends Activity {
                 if (state == ON && !busy) { toast(L.t("Süre doldu")); toggle(); }
             }
             boolean full = left > RemnaConfig.MAX_BANK_MS - RemnaConfig.REWARD_MS;
-            watchBtn.setAlpha(full ? 0.45f : 1f);
+            watchRow.setAlpha(full ? 0.45f : 1f);
             ui.postDelayed(this, 1000);
         }
     };
@@ -177,7 +178,7 @@ public class RemnaActivity extends Activity {
 
     View iconBtn(int type, float size, View.OnClickListener l) {
         FrameLayout f = new FrameLayout(this);
-        f.setBackground(roundStroke(CARD, size / 2f, LINE));
+        f.setBackground(round(0x12FFFFFF, size / 2f));
         Ui.Icon ic = new Ui.Icon(this, type, TX);
         f.addView(ic, new FrameLayout.LayoutParams(dp(size * 0.48f), dp(size * 0.48f), Gravity.CENTER));
         f.setOnClickListener(l);
@@ -268,7 +269,9 @@ public class RemnaActivity extends Activity {
         timerTv = text("00:00:00", 13, TX2, false);
         timerTv.setTypeface(Typeface.MONOSPACE);
         timerTv.setPadding(dp(12), dp(5), dp(12), dp(5));
-        timerTv.setBackground(round(0x14FFFFFF, 12));
+        timerTv.setBackground(round(0x0FFFFFFF, 14));
+        timerTv.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        timerTv.setLetterSpacing(0.04f);
         LinearLayout.LayoutParams tl = lp(WC, WC);
         tl.topMargin = dp(10);
         center.addView(timerTv, tl);
@@ -281,9 +284,20 @@ public class RemnaActivity extends Activity {
         wb.setCornerRadius(dp(20));
         watchBtn.setBackground(wb);
         watchBtn.setOnClickListener(v -> watchAd(null));
+        watchBtn.setCompoundDrawablePadding(dp(8));
+        watchBtn.setPadding(dp(18), dp(10), dp(20), dp(10));
         LinearLayout.LayoutParams wl = lp(WC, WC);
-        wl.topMargin = dp(10);
-        center.addView(watchBtn, wl);
+        wl.topMargin = dp(12);
+        LinearLayout wrow = new LinearLayout(this);
+        wrow.setGravity(Gravity.CENTER_VERTICAL);
+        wrow.setBackground(watchBtn.getBackground());
+        watchBtn.setBackground(null);
+        wrow.setPadding(dp(16), 0, dp(4), 0);
+        wrow.addView(new Ui.Icon(this, Ui.Icon.PLAY, Color.WHITE), lp(dp(16), dp(16)));
+        wrow.addView(watchBtn);
+        wrow.setOnClickListener(v -> watchAd(null));
+        center.addView(wrow, wl);
+        watchRow = wrow;
         root.addView(center, new LinearLayout.LayoutParams(MP, 0, 1f));
 
         // ---- seçili sunucu kartı (dokununca liste açılır)
@@ -593,12 +607,12 @@ public class RemnaActivity extends Activity {
 
             c.addView(section(L.t("BAĞLANTI")));
             c.addView(action(Ui.Icon.SHIELD, L.t("Uygulama bazlı VPN"), v -> openClass("com.v2ray.ang.ui.PerAppProxyActivity")), cardLp());
-            c.addView(action(Ui.Icon.LINK, L.t("Yönlendirme kuralları"), v -> openClass("com.v2ray.ang.ui.RoutingSettingActivity")), cardLp());
+            c.addView(action(Ui.Icon.ROUTE, L.t("Yönlendirme kuralları"), v -> openClass("com.v2ray.ang.ui.RoutingSettingActivity")), cardLp());
             c.addView(action(Ui.Icon.GEAR, L.t("Gelişmiş ayarlar"), v -> openClass("com.v2ray.ang.ui.SettingsActivity")), cardLp());
 
             c.addView(section(L.t("DİL")));
             LinearLayout lr = card();
-            lr.addView(new Ui.Icon(this, Ui.Icon.LINK, ACC), lp(dp(22), dp(22)));
+            lr.addView(new Ui.Icon(this, Ui.Icon.GLOBE, ACC), lp(dp(22), dp(22)));
             TextView lt = text(L.t("Dil"), 15, TX, false);
             lt.setPadding(dp(14), 0, 0, 0);
             lr.addView(lt, new LinearLayout.LayoutParams(0, WC, 1));
@@ -618,7 +632,7 @@ public class RemnaActivity extends Activity {
             c.addView(lr, cardLp());
 
             c.addView(section(L.t("SORUN GİDERME")));
-            c.addView(action(Ui.Icon.SIGNAL, L.t("Günlük (log)"), v -> openLog()), cardLp());
+            c.addView(action(Ui.Icon.DOC, L.t("Günlük (log)"), v -> openLog()), cardLp());
 
             c.addView(section(L.t("CİHAZ")));
             LinearLayout hw = card();

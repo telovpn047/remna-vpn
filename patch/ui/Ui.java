@@ -21,9 +21,10 @@ final class Ui {
         return TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, c.getResources().getDisplayMetrics());
     }
 
-    /* ======================= İkon ======================= */
+    /* ======================= İkon (yumuşak, yuvarlak hatlı) ======================= */
     static final class Icon extends View {
-        static final int PLUS = 1, GEAR = 2, REFRESH = 3, BOLT = 4, SIGNAL = 5, TRASH = 6, LINK = 7, CHEVRON = 8, CLOSE = 9, SHIELD = 10;
+        static final int PLUS = 1, GEAR = 2, REFRESH = 3, BOLT = 4, SIGNAL = 5, TRASH = 6, LINK = 7, CHEVRON = 8, CLOSE = 9, SHIELD = 10,
+                GLOBE = 11, DOC = 12, PLAY = 13, CLOCK = 14, ROUTE = 15, SERVER = 16;
         final int type;
         final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         final Path path = new Path();
@@ -42,90 +43,135 @@ final class Ui {
         @Override
         protected void onDraw(Canvas cv) {
             float w = getWidth(), h = getHeight(), s = Math.min(w, h);
-            float u = s / 24f; // 24'lük ızgara
+            float u = s / 24f;
             cv.save();
             cv.translate((w - s) / 2f, (h - s) / 2f);
-            p.setStrokeWidth(2f * u);
+            p.setStrokeWidth(1.75f * u);
             p.setStyle(Paint.Style.STROKE);
+            p.setPathEffect(new android.graphics.CornerPathEffect(2.2f * u));
             path.reset();
             switch (type) {
                 case PLUS:
-                    cv.drawLine(12 * u, 5 * u, 12 * u, 19 * u, p);
-                    cv.drawLine(5 * u, 12 * u, 19 * u, 12 * u, p);
+                    cv.drawLine(12 * u, 6 * u, 12 * u, 18 * u, p);
+                    cv.drawLine(6 * u, 12 * u, 18 * u, 12 * u, p);
                     break;
                 case CLOSE:
-                    cv.drawLine(6 * u, 6 * u, 18 * u, 18 * u, p);
-                    cv.drawLine(18 * u, 6 * u, 6 * u, 18 * u, p);
+                    cv.drawLine(7 * u, 7 * u, 17 * u, 17 * u, p);
+                    cv.drawLine(17 * u, 7 * u, 7 * u, 17 * u, p);
                     break;
-                case GEAR: {
-                    cv.drawCircle(12 * u, 12 * u, 3.2f * u, p);
-                    for (int i = 0; i < 8; i++) {
-                        double a = Math.PI / 4 * i;
-                        float x1 = (float) (12 + Math.cos(a) * 6.2), y1 = (float) (12 + Math.sin(a) * 6.2);
-                        float x2 = (float) (12 + Math.cos(a) * 8.6), y2 = (float) (12 + Math.sin(a) * 8.6);
-                        cv.drawLine(x1 * u, y1 * u, x2 * u, y2 * u, p);
+                case GEAR: { // modern "ayar kaydırıcıları"
+                    float[] ys = {7, 12, 17}, ks = {15, 9, 13.5f};
+                    for (int i = 0; i < 3; i++) {
+                        cv.drawLine(4.5f * u, ys[i] * u, 19.5f * u, ys[i] * u, p);
                     }
-                    cv.drawCircle(12 * u, 12 * u, 6.2f * u, p);
+                    Paint f = new Paint(Paint.ANTI_ALIAS_FLAG);
+                    f.setColor(p.getColor());
+                    for (int i = 0; i < 3; i++) {
+                        f.setStyle(Paint.Style.FILL);
+                        cv.drawCircle(ks[i] * u, ys[i] * u, 2.4f * u, f);
+                    }
                     break;
                 }
                 case REFRESH: {
-                    RectF r = new RectF(5 * u, 5 * u, 19 * u, 19 * u);
-                    cv.drawArc(r, -60, 290, false, p);
-                    path.moveTo(15.5f * u, 4f * u);
-                    path.lineTo(18.6f * u, 6.4f * u);
-                    path.lineTo(15.6f * u, 9f * u);
+                    RectF r = new RectF(5.5f * u, 5.5f * u, 18.5f * u, 18.5f * u);
+                    cv.drawArc(r, -70, 300, false, p);
+                    p.setStyle(Paint.Style.FILL);
+                    path.moveTo(15.2f * u, 3.4f * u);
+                    path.lineTo(19.4f * u, 6.0f * u);
+                    path.lineTo(15.0f * u, 8.6f * u);
+                    path.close();
                     cv.drawPath(path, p);
                     break;
                 }
                 case BOLT:
-                    p.setStyle(Paint.Style.FILL_AND_STROKE);
-                    p.setStrokeWidth(1f * u);
-                    path.moveTo(13.5f * u, 2.5f * u);
-                    path.lineTo(5.5f * u, 13.5f * u);
-                    path.lineTo(11.5f * u, 13.5f * u);
-                    path.lineTo(10.5f * u, 21.5f * u);
-                    path.lineTo(18.5f * u, 10.5f * u);
-                    path.lineTo(12.5f * u, 10.5f * u);
+                    p.setStyle(Paint.Style.FILL);
+                    p.setPathEffect(new android.graphics.CornerPathEffect(1.6f * u));
+                    path.moveTo(13.6f * u, 2.6f * u);
+                    path.lineTo(5.6f * u, 13.4f * u);
+                    path.lineTo(11.4f * u, 13.4f * u);
+                    path.lineTo(10.4f * u, 21.4f * u);
+                    path.lineTo(18.4f * u, 10.6f * u);
+                    path.lineTo(12.6f * u, 10.6f * u);
                     path.close();
                     cv.drawPath(path, p);
                     break;
-                case SIGNAL:
-                    p.setStrokeWidth(2.4f * u);
-                    cv.drawLine(6 * u, 19 * u, 6 * u, 15 * u, p);
-                    cv.drawLine(10 * u, 19 * u, 10 * u, 12 * u, p);
-                    cv.drawLine(14 * u, 19 * u, 14 * u, 8.5f * u, p);
-                    cv.drawLine(18 * u, 19 * u, 18 * u, 5 * u, p);
+                case SIGNAL: {
+                    p.setStyle(Paint.Style.FILL);
+                    p.setPathEffect(null);
+                    float[] hs = {4, 7.5f, 11, 14.5f};
+                    for (int i = 0; i < 4; i++) {
+                        float x = (4.5f + i * 4.2f) * u;
+                        cv.drawRoundRect(new RectF(x, (19 - hs[i]) * u, x + 2.8f * u, 19 * u), 1.4f * u, 1.4f * u, p);
+                    }
                     break;
+                }
                 case TRASH:
-                    cv.drawLine(4.5f * u, 7 * u, 19.5f * u, 7 * u, p);
-                    cv.drawLine(9.5f * u, 7 * u, 10 * u, 4.5f * u, p);
-                    cv.drawLine(10 * u, 4.5f * u, 14 * u, 4.5f * u, p);
-                    cv.drawLine(14 * u, 4.5f * u, 14.5f * u, 7 * u, p);
-                    path.moveTo(6.5f * u, 7 * u);
-                    path.lineTo(7.5f * u, 19.5f * u);
-                    path.lineTo(16.5f * u, 19.5f * u);
-                    path.lineTo(17.5f * u, 7 * u);
-                    cv.drawPath(path, p);
+                    cv.drawLine(5 * u, 7 * u, 19 * u, 7 * u, p);
+                    cv.drawRoundRect(new RectF(9.5f * u, 4 * u, 14.5f * u, 7 * u), 1.5f * u, 1.5f * u, p);
+                    cv.drawRoundRect(new RectF(6.8f * u, 7 * u, 17.2f * u, 20 * u), 2.5f * u, 2.5f * u, p);
                     break;
-                case LINK: {
-                    RectF a = new RectF(3 * u, 8.5f * u, 13 * u, 15.5f * u), b = new RectF(11 * u, 8.5f * u, 21 * u, 15.5f * u);
-                    cv.drawRoundRect(a, 3.5f * u, 3.5f * u, p);
-                    cv.drawRoundRect(b, 3.5f * u, 3.5f * u, p);
+                case LINK:
+                case ROUTE: { // iki nokta arasında kıvrımlı yol
+                    p.setPathEffect(null);
+                    cv.drawCircle(6 * u, 6.5f * u, 2.3f * u, p);
+                    cv.drawCircle(18 * u, 17.5f * u, 2.3f * u, p);
+                    path.moveTo(8.3f * u, 6.5f * u);
+                    path.cubicTo(20 * u, 6.5f * u, 4 * u, 17.5f * u, 15.7f * u, 17.5f * u);
+                    cv.drawPath(path, p);
                     break;
                 }
                 case CHEVRON:
-                    path.moveTo(9 * u, 6 * u);
+                    path.moveTo(9.5f * u, 6.5f * u);
                     path.lineTo(15 * u, 12 * u);
-                    path.lineTo(9 * u, 18 * u);
+                    path.lineTo(9.5f * u, 17.5f * u);
                     cv.drawPath(path, p);
                     break;
                 case SHIELD:
-                    path.moveTo(12 * u, 2.8f * u);
-                    path.lineTo(19.5f * u, 5.8f * u);
-                    path.cubicTo(19.5f * u, 13 * u, 16.5f * u, 18.5f * u, 12 * u, 21.2f * u);
-                    path.cubicTo(7.5f * u, 18.5f * u, 4.5f * u, 13 * u, 4.5f * u, 5.8f * u);
+                    path.moveTo(12 * u, 3 * u);
+                    path.lineTo(19 * u, 5.8f * u);
+                    path.cubicTo(19 * u, 13 * u, 16.2f * u, 18.4f * u, 12 * u, 21 * u);
+                    path.cubicTo(7.8f * u, 18.4f * u, 5 * u, 13 * u, 5 * u, 5.8f * u);
                     path.close();
                     cv.drawPath(path, p);
+                    path.reset();
+                    path.moveTo(9 * u, 12 * u);
+                    path.lineTo(11.2f * u, 14.2f * u);
+                    path.lineTo(15.2f * u, 10 * u);
+                    cv.drawPath(path, p);
+                    break;
+                case GLOBE:
+                    p.setPathEffect(null);
+                    cv.drawCircle(12 * u, 12 * u, 8.5f * u, p);
+                    cv.drawOval(new RectF(8.2f * u, 3.5f * u, 15.8f * u, 20.5f * u), p);
+                    cv.drawLine(3.8f * u, 12 * u, 20.2f * u, 12 * u, p);
+                    break;
+                case DOC:
+                    cv.drawRoundRect(new RectF(5.5f * u, 3.5f * u, 18.5f * u, 20.5f * u), 3 * u, 3 * u, p);
+                    cv.drawLine(9 * u, 9 * u, 15 * u, 9 * u, p);
+                    cv.drawLine(9 * u, 12.5f * u, 15 * u, 12.5f * u, p);
+                    cv.drawLine(9 * u, 16 * u, 12.5f * u, 16 * u, p);
+                    break;
+                case PLAY:
+                    p.setStyle(Paint.Style.FILL);
+                    p.setPathEffect(new android.graphics.CornerPathEffect(2.5f * u));
+                    path.moveTo(8 * u, 5 * u);
+                    path.lineTo(19.5f * u, 12 * u);
+                    path.lineTo(8 * u, 19 * u);
+                    path.close();
+                    cv.drawPath(path, p);
+                    break;
+                case CLOCK:
+                    p.setPathEffect(null);
+                    cv.drawCircle(12 * u, 12 * u, 8.5f * u, p);
+                    cv.drawLine(12 * u, 7.5f * u, 12 * u, 12 * u, p);
+                    cv.drawLine(12 * u, 12 * u, 15 * u, 14 * u, p);
+                    break;
+                case SERVER:
+                    cv.drawRoundRect(new RectF(4.5f * u, 4.5f * u, 19.5f * u, 11 * u), 2.5f * u, 2.5f * u, p);
+                    cv.drawRoundRect(new RectF(4.5f * u, 13 * u, 19.5f * u, 19.5f * u), 2.5f * u, 2.5f * u, p);
+                    p.setStyle(Paint.Style.FILL);
+                    cv.drawCircle(8 * u, 7.75f * u, 1.1f * u, p);
+                    cv.drawCircle(8 * u, 16.25f * u, 1.1f * u, p);
                     break;
             }
             cv.restore();
@@ -188,45 +234,55 @@ final class Ui {
         protected void onDraw(Canvas cv) {
             float w = getWidth(), h = getHeight(), cx = w / 2f, cy = h / 2f;
             float R = Math.min(w, h) / 2f;
-            float core = R * 0.62f;
+            float core = R * 0.6f;
             float d = Ui.dp(getContext(), 1);
 
-            // dış parıltı
-            float gl = state == OFF ? 0.18f : state == CONNECTING ? 0.22f + 0.18f * breathe : 0.32f + 0.12f * breathe;
-            glow.setShader(new RadialGradient(cx, cy, R, new int[]{withA(c1, gl), withA(c2, gl * 0.5f), 0x00000000}, new float[]{0.45f, 0.75f, 1f}, Shader.TileMode.CLAMP));
+            // yumuşak dış hale
+            float gl = state == OFF ? 0.16f : state == CONNECTING ? 0.2f + 0.14f * breathe : 0.26f + 0.1f * breathe;
+            glow.setShader(new RadialGradient(cx, cy, R, new int[]{withA(c1, gl), withA(c2, gl * 0.45f), 0x00000000}, new float[]{0.5f, 0.78f, 1f}, Shader.TileMode.CLAMP));
             cv.drawCircle(cx, cy, R, glow);
 
-            // halkalar
-            ring.setStrokeWidth(1.2f * d);
-            ring.setColor(withA(c1, 0.22f));
-            cv.drawCircle(cx, cy, core + 22 * d, ring);
-            ring.setColor(withA(c1, 0.12f));
-            cv.drawCircle(cx, cy, core + 40 * d, ring);
+            // ince, soluk halka
+            float r2 = core + 20 * d;
+            ring.setStrokeWidth(1f * d);
+            ring.setColor(withA(0xFFFFFFFF, 0.06f));
+            cv.drawCircle(cx, cy, r2, ring);
 
-            // bağlanırken dönen yay
+            // durum yayı
+            arc.setStrokeWidth(3f * d);
             if (state == CONNECTING) {
-                arc.setStrokeWidth(3.5f * d);
-                arc.setShader(new LinearGradient(cx - core, cy, cx + core, cy, c1, c2, Shader.TileMode.CLAMP));
-                float r2 = core + 22 * d;
-                cv.drawArc(new RectF(cx - r2, cy - r2, cx + r2, cy + r2), spin, 100, false, arc);
+                arc.setShader(new android.graphics.SweepGradient(cx, cy, new int[]{0x00000000, withA(c1, 0.9f), c2}, new float[]{0f, 0.25f, 0.3f}));
+                cv.save();
+                cv.rotate(spin, cx, cy);
+                cv.drawArc(new RectF(cx - r2, cy - r2, cx + r2, cy + r2), 0, 108, false, arc);
+                cv.restore();
             } else if (state == ON) {
-                arc.setStrokeWidth(3.5f * d);
-                arc.setShader(new LinearGradient(cx - core, cy, cx + core, cy, c1, c2, Shader.TileMode.CLAMP));
-                float r2 = core + 22 * d;
+                arc.setShader(new android.graphics.SweepGradient(cx, cy, new int[]{c1, c2, c1}, null));
+                arc.setAlpha((int) (150 + 80 * breathe));
                 cv.drawCircle(cx, cy, r2, arc);
+                arc.setAlpha(255);
             }
 
-            // gövde
+            // gövde: degrade + yumuşak gölge
             fill.setShader(new LinearGradient(cx - core, cy - core, cx + core, cy + core, c1, c2, Shader.TileMode.CLAMP));
-            fill.setShadowLayer(18 * d, 0, 6 * d, withA(c2, 0.55f));
+            fill.setShadowLayer(24 * d, 0, 10 * d, withA(c2, 0.45f));
             cv.drawCircle(cx, cy, core, fill);
             fill.clearShadowLayer();
+            // cam parlaklığı (üstte)
+            Paint gloss = new Paint(Paint.ANTI_ALIAS_FLAG);
+            gloss.setShader(new LinearGradient(cx, cy - core, cx, cy + core * 0.2f, 0x38FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP));
+            cv.drawCircle(cx, cy, core, gloss);
+            Paint edge = new Paint(Paint.ANTI_ALIAS_FLAG);
+            edge.setStyle(Paint.Style.STROKE);
+            edge.setStrokeWidth(1.2f * d);
+            edge.setColor(0x33FFFFFF);
+            cv.drawCircle(cx, cy, core - 0.6f * d, edge);
 
-            // güç simgesi
-            float gr = core * 0.38f;
-            glyph.setStrokeWidth(core * 0.09f);
-            cv.drawArc(new RectF(cx - gr, cy - gr, cx + gr, cy + gr), -60, 300, false, glyph);
-            cv.drawLine(cx, cy - gr * 1.25f, cx, cy - gr * 0.15f, glyph);
+            // ince, yuvarlak güç simgesi
+            float gr = core * 0.34f;
+            glyph.setStrokeWidth(core * 0.075f);
+            cv.drawArc(new RectF(cx - gr, cy - gr, cx + gr, cy + gr), -58, 296, false, glyph);
+            cv.drawLine(cx, cy - gr * 1.22f, cx, cy - gr * 0.12f, glyph);
         }
 
         static int withA(int c, float a) {
