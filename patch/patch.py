@@ -99,7 +99,7 @@ print(f"[vpn] kendi paketini dışlayan satır kaldırıldı: {ex}")
 removed = 0
 for p in glob.glob(os.path.join(main, "res", "mipmap-*", "ic_launcher*")):
     os.remove(p); removed += 1
-for d in glob.glob(os.path.join(HERE, "icons", "mipmap-*")):
+for d in glob.glob(os.path.join(HERE, "icons", "*")):
     dst = os.path.join(main, "res", os.path.basename(d)); os.makedirs(dst, exist_ok=True)
     for f in os.listdir(d): shutil.copy(os.path.join(d, f), os.path.join(dst, f))
 # manifest/kaynaklar ic_launcher_round istemiyorsa sorun değil; eksik referans kalmasın
